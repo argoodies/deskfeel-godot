@@ -11,6 +11,11 @@ const TOKEN_HEIGHT := 0.07
 const TOKEN_TOP_Y := TOKEN_HEIGHT * 0.5
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const MOVE_SOUND_STEP := 0.07              # 拖动每滑过这么远响一次“哒”
+const BALL_SIZE := 148.0                   # 右下角控制球直径
+const KNOB := 64.0                         # 转盘旋钮直径
+const KNOB_RADIUS := 40.0                  # 旋钮偏移上限
+const BALL_SENS := 0.006                   # 转盘灵敏度（弧度/像素）
+const MAX_PITCH := 85.0                    # 手动俯仰上限（度）
 
 # 三枚令牌：emoji、中文名、顶面色。
 const TOKENS := [
@@ -23,6 +28,12 @@ var _camera: Camera3D
 var _table: Node3D                         # 桌板 + 令牌的枢轴，随重力倾斜
 var _dragging: StaticBody3D = null
 var _last_sound_pos := Vector3.ZERO
+
+var _manual_rot := Vector3.ZERO             # 控制球累积的手动旋转（俯仰 x / 自转 y）
+var _ring: Panel
+var _knob: Panel
+var _knob_off := Vector2.ZERO
+var _ball_drag := false
 
 var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
@@ -39,6 +50,7 @@ func _ready() -> void:
 	add_child(_table)
 	_build_board()
 	_spawn_tokens()
+	_build_control_ball()
 
 func _load_font() -> void:
 	# 中文用 Noto Sans SC 子集，emoji 回退到 Noto Color Emoji 子集（彩色）。
@@ -156,20 +168,90 @@ func _make_token(data: Dictionary) -> void:
 	body.set_meta("token", true)
 	_table.add_child(body)
 
-## 每帧：板子随手机重力倾斜（有传感器才动，Web 桌面无传感器则保持水平）。
+# MARK: 右下角控制球（虚拟转盘）——重力/罗盘之外的手动旋转。
+func _build_control_ball() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	_ring = Panel.new()
+	_ring.anchor_left = 1.0
+	_ring.anchor_top = 1.0
+	_ring.anchor_right = 1.0
+	_ring.anchor_bottom = 1.0
+	_ring.offset_left = -(BALL_SIZE + 22.0)
+	_ring.offset_top = -(BALL_SIZE + 22.0)
+	_ring.offset_right = -22.0
+	_ring.offset_bottom = -22.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1, 1, 1, 0.08)
+	sb.border_color = Color(1, 1, 1, 0.32)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(int(BALL_SIZE / 2.0))
+	_ring.add_theme_stylebox_override("panel", sb)
+	layer.add_child(_ring)
+
+	_knob = Panel.new()
+	_knob.size = Vector2(KNOB, KNOB)
+	_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ks := StyleBoxFlat.new()
+	ks.bg_color = Color(0.62, 0.45, 0.85, 0.9)
+	ks.border_color = Color(1, 1, 1, 0.5)
+	ks.set_border_width_all(2)
+	ks.set_corner_radius_all(int(KNOB / 2.0))
+	_knob.add_theme_stylebox_override("panel", ks)
+	_ring.add_child(_knob)
+	_center_knob()
+
+	_ring.gui_input.connect(_on_ball_input)
+
+func _knob_home() -> float:
+	return (BALL_SIZE - KNOB) / 2.0
+
+func _center_knob() -> void:
+	_knob_off = Vector2.ZERO
+	_knob.position = Vector2(_knob_home(), _knob_home())
+
+func _on_ball_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton or event is InputEventScreenTouch:
+		if event.pressed:
+			_ball_drag = true
+		else:
+			_ball_drag = false
+			_center_knob()
+	elif _ball_drag and (event is InputEventMouseMotion or event is InputEventScreenDrag):
+		_rotate_by(event.relative)
+
+# 转盘拖动 → 累积手动旋转：上下拖=俯仰(绕X)，左右拖=自转(绕Y)；旋钮跟手。
+func _rotate_by(delta: Vector2) -> void:
+	_manual_rot.x = clampf(_manual_rot.x - delta.y * BALL_SENS, -deg_to_rad(MAX_PITCH), deg_to_rad(MAX_PITCH))
+	_manual_rot.y += delta.x * BALL_SENS
+	_knob_off = (_knob_off + delta).limit_length(KNOB_RADIUS)
+	_knob.position = Vector2(_knob_home(), _knob_home()) + _knob_off
+
+## 每帧：板子 = 重力倾斜（有传感器才动）+ 控制球的手动旋转。
 func _process(delta: float) -> void:
 	var g := Input.get_gravity()
-	var target := Vector3.ZERO
+	var grav := Vector3.ZERO
 	if g.length() > 0.5:
 		var gx := clampf(g.x / 9.8, -1.0, 1.0)
 		var gz := clampf(g.z / 9.8, -1.0, 1.0)
-		# 手机怎么斜板子怎么斜（幅度限 ±MAX_TILT_DEG）；真机上若方向相反把符号翻一下。
-		target = Vector3(deg_to_rad(MAX_TILT_DEG) * gz, 0.0, deg_to_rad(-MAX_TILT_DEG) * gx)
+		# 手机怎么斜板子怎么斜；真机上若方向相反把符号翻一下。
+		grav = Vector3(deg_to_rad(MAX_TILT_DEG) * gz, 0.0, deg_to_rad(-MAX_TILT_DEG) * gx)
+	var target := Vector3(grav.x + _manual_rot.x, _manual_rot.y, grav.z)
+	target.x = clampf(target.x, -deg_to_rad(MAX_PITCH), deg_to_rad(MAX_PITCH))
 	var weight := 1.0 - pow(0.002, delta)     # 平滑趋近
 	_table.rotation = _table.rotation.lerp(target, weight)
 
 ## 交互：按下→命中令牌抓起（响“嗒”）；拖动→贴板面平移（滑动“哒”）；松开→放下（“咚”）。
 func _unhandled_input(event: InputEvent) -> void:
+	# 转盘拖动进行中：即使指针滑出球区也继续旋转，且不去抓令牌。
+	if _ball_drag:
+		if (event is InputEventMouseButton or event is InputEventScreenTouch) and not event.pressed:
+			_ball_drag = false
+			_center_knob()
+		elif event is InputEventMouseMotion or event is InputEventScreenDrag:
+			_rotate_by(event.relative)
+		return
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		if event.pressed:
 			_try_pick(event.position)
