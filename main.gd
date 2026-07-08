@@ -36,6 +36,7 @@ var _camera: Camera3D
 var _table: Node3D                         # 桌板 + 令牌的枢轴，随重力倾斜
 var _dragging: StaticBody3D = null
 var _last_sound_pos := Vector3.ZERO
+var _pieces: Array[StaticBody3D] = []       # 所有令牌+纽扣，用于相互不重叠的分离
 
 var _manual_rot := Vector3.ZERO             # 拖拽累积的板子旋转（俯仰 x / 自转 y）
 var _rotating := false                       # 正在拖动板面/空白旋转板子
@@ -202,7 +203,7 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 	body.add_child(col)
 
 	# 纽扣小字，贴在纽扣下方边缘外侧。
-	_add_label(body, data.label, is_top, BUTTON_HEIGHT * 0.5 + 0.01, BUTTON_RADIUS + 0.055, 24)
+	_add_label(body, data.label, is_top, BUTTON_HEIGHT * 0.5 + 0.01, BUTTON_RADIUS + 0.055, 30)
 
 	var base_y := (TOP_SURF + BUTTON_HEIGHT * 0.5) if is_top else -(TOP_SURF + BUTTON_HEIGHT * 0.5)
 	# 背面那份 z 取反：翻面（180°）后它们同样落在该面的下方边缘。
@@ -210,7 +211,9 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 	body.position = Vector3(data.pos.x, base_y, z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)
+	body.set_meta("radius", BUTTON_RADIUS)
 	_table.add_child(body)
+	_pieces.append(body)
 
 func _make_token(data: Dictionary, is_top: bool) -> void:
 	var body := StaticBody3D.new()
@@ -245,12 +248,14 @@ func _make_token(data: Dictionary, is_top: bool) -> void:
 	# 令牌所在面的高度：正面坐在毛毯面上，背面坐在木板底面。
 	var base_y := (TOP_SURF + TOKEN_HEIGHT * 0.5) if is_top else -(TOP_SURF + TOKEN_HEIGHT * 0.5)
 	# 名字：小字，靠令牌下方边缘。
-	_add_label(body, data.name, is_top, TOKEN_HEIGHT * 0.5 + 0.02, TOKEN_RADIUS * 0.62, 34)
+	_add_label(body, data.name, is_top, TOKEN_HEIGHT * 0.5 + 0.02, TOKEN_RADIUS * 0.62, 42)
 
 	body.position = Vector3(data.pos.x, base_y, data.pos.z)
 	body.set_meta("token", true)
 	body.set_meta("plane_y", base_y)   # 拖拽时贴着自己这一面移动
+	body.set_meta("radius", TOKEN_RADIUS)
 	_table.add_child(body)
+	_pieces.append(body)
 
 # 拖拽板子/空白 → 累积旋转板子：上下拖=俯仰(绕X)，左右拖=自转(绕Y)。两轴均无限旋转。
 func _rotate_by(delta: Vector2) -> void:
@@ -269,6 +274,48 @@ func _process(delta: float) -> void:
 	var target := Vector3(grav.x + _manual_rot.x, _manual_rot.y, grav.z)
 	var weight := 1.0 - pow(0.002, delta)     # 平滑趋近
 	_table.rotation = _table.rotation.lerp(target, weight)
+	_separate()
+
+## 物料互不重叠：同一面上的圆片按半径相互推开（被拖的那个不动，推开别的），再夹在板内。
+func _separate() -> void:
+	var hx := BOARD_SIZE.x * 0.5
+	var hz := BOARD_SIZE.y * 0.5
+	for _it in 2:
+		for i in _pieces.size():
+			for j in range(i + 1, _pieces.size()):
+				var a: StaticBody3D = _pieces[i]
+				var b: StaticBody3D = _pieces[j]
+				var pya: float = a.get_meta("plane_y")
+				var pyb: float = b.get_meta("plane_y")
+				if signf(pya) != signf(pyb):
+					continue                       # 不同面（正/反）不互相干涉
+				var dx := b.position.x - a.position.x
+				var dz := b.position.z - a.position.z
+				var d := sqrt(dx * dx + dz * dz)
+				var ra: float = a.get_meta("radius")
+				var rb: float = b.get_meta("radius")
+				var mind := ra + rb
+				if d >= mind:
+					continue
+				var nx := 1.0
+				var nz := 0.0
+				if d > 0.0001:
+					nx = dx / d
+					nz = dz / d
+				var push := mind - maxf(d, 0.0001)
+				if a == _dragging:
+					b.position += Vector3(nx * push, 0.0, nz * push)
+				elif b == _dragging:
+					a.position -= Vector3(nx * push, 0.0, nz * push)
+				else:
+					a.position -= Vector3(nx * push * 0.5, 0.0, nz * push * 0.5)
+					b.position += Vector3(nx * push * 0.5, 0.0, nz * push * 0.5)
+	for p in _pieces:
+		var r: float = p.get_meta("radius")
+		var pp: Vector3 = p.position
+		pp.x = clampf(pp.x, -hx + r, hx - r)
+		pp.z = clampf(pp.z, -hz + r, hz - r)
+		p.position = pp
 
 ## 交互：按下→命中令牌抓起（响“嗒”）；拖动→贴板面平移（滑动“哒”）；松开→放下（“咚”）。
 func _unhandled_input(event: InputEvent) -> void:
