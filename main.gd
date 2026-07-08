@@ -35,9 +35,10 @@ func _build_environment() -> void:
 func _build_camera() -> void:
 	_camera = Camera3D.new()
 	_camera.fov = 52.0
-	_camera.position = Vector3(0.0, 3.0, 3.2)
+	add_child(_camera)                       # 先入树，保证 look_at 用到有效的全局变换
+	_camera.position = Vector3(0.0, 3.4, 3.6)
 	_camera.look_at(Vector3.ZERO, Vector3.UP)
-	add_child(_camera)
+	_camera.current = true                    # 关键：脚本创建的相机必须显式设为当前，否则视口只显背景色
 
 func _build_lights() -> void:
 	var dir := DirectionalLight3D.new()
