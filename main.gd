@@ -14,12 +14,12 @@ const TOKEN_RADIUS := 0.22
 const TOKEN_HEIGHT := 0.014                 # 纸板厚度
 const BUTTON_RADIUS := 0.085                # 小纽扣半径
 const BUTTON_HEIGHT := 0.012
-# 3 枚小纽扣：板面下方边缘附近一排（z 靠近前缘 1.25、x 居中）；1 拼图 + 2 红书。
+# 4 枚小纽扣：板面下方约 3/4 处一排（z=1.10、x 居中）；2 拼图 + 2 红书。
 const BUTTONS := [
-	{"pos": Vector3(-0.54, 0.0, 1.25), "face": "res://textures/button_puzzle.png", "label": "醉酒"},
-	{"pos": Vector3(-0.18, 0.0, 1.25), "face": "res://textures/button_book.png", "label": "选择"},
-	{"pos": Vector3(0.18, 0.0, 1.25), "face": "res://textures/button_book.png", "label": "即将死亡"},
-	{"pos": Vector3(0.54, 0.0, 1.25), "face": "res://textures/button_puzzle.png", "label": "已猜测"},
+	{"pos": Vector3(-0.54, 0.0, 1.10), "face": "res://textures/button_puzzle.png", "label": "醉酒"},
+	{"pos": Vector3(-0.18, 0.0, 1.10), "face": "res://textures/button_book.png", "label": "选择"},
+	{"pos": Vector3(0.18, 0.0, 1.10), "face": "res://textures/button_book.png", "label": "即将死亡"},
+	{"pos": Vector3(0.54, 0.0, 1.10), "face": "res://textures/button_puzzle.png", "label": "已猜测"},
 ]
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const MOVE_SOUND_STEP := 0.07              # 拖动每滑过这么远响一次“哒”
