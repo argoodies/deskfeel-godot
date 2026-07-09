@@ -5,6 +5,9 @@ name: iOS → TestFlight
 # 手动触发。注意 Apple 每日上传上限对 iOS 仍生效（altool 输出报错即让 job 失败）。
 on:
   workflow_dispatch:
+  # 临时：每天 10:30 UTC 自动发一次（等 Apple 每日上传配额清窗）。首次成功后请删除此 schedule。
+  schedule:
+    - cron: "30 10 * * *"
 
 env:
   GODOT_VERSION: "4.6.3"
