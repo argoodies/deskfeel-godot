@@ -78,9 +78,12 @@ func _play_intro() -> void:
 	_intro = true
 	_manual_rot = Vector3.ZERO
 	_table.rotation = Vector3.ZERO
-	# 开头极快、末尾长长地降速到停。
+	# 绕一个略偏离水平轴的方向翻 4 整圈（整圈=回正）。开头极快、末尾长长降速。
+	var axis := Vector3(1.0, 0.16, 0.1).normalized()
 	_intro_tween = create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	_intro_tween.tween_property(_table, "rotation:x", TAU * 4.0, 1.9)
+	_intro_tween.tween_method(
+		func(a: float): _table.transform = Transform3D(Basis(axis, a), Vector3.ZERO),
+		0.0, TAU * 4.0, 1.9)
 	_intro_tween.tween_callback(_end_intro)
 
 func _end_intro() -> void:
