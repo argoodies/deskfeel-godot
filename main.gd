@@ -23,6 +23,8 @@ const BUTTONS := [
 ]
 const MAX_TILT_DEG := 22.0                 # 重力最大倾角
 const ROT_SENS := 0.0024                   # 拖拽旋转灵敏度（弧度/像素）
+const MIN_ZOOM := 2.6                       # 相机最近距离
+const MAX_ZOOM := 9.5                       # 相机最远距离
 
 # 三枚令牌：emoji、中文名、顶面色。
 const TOKENS := [
@@ -35,6 +37,9 @@ var _camera: Camera3D
 var _table: Node3D                         # 桌板 + 令牌的枢轴，随重力倾斜
 var _dragging: StaticBody3D = null
 var _pieces: Array[StaticBody3D] = []       # 所有令牌+纽扣，用于相互不重叠的分离
+var _touches := {}                           # 活跃触点 index→位置，用于双指缩放
+var _pinching := false
+var _pinch_dist := 0.0
 
 var _manual_rot := Vector3.ZERO             # 拖拽累积的板子旋转（俯仰 x / 自转 y）
 var _rotating := false                       # 正在拖动板面/空白旋转板子
@@ -367,9 +372,47 @@ func _separate() -> void:
 
 ## 交互：按下→命中令牌抓起（响“嗒”）；拖动→贴板面平移（滑动“哒”）；松开→放下（“咚”）。
 func _unhandled_input(event: InputEvent) -> void:
+	# --- 缩放：双指捏合 / 触控板 / 鼠标滚轮 ---
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_touches[event.index] = event.position
+		else:
+			_touches.erase(event.index)
+		if _touches.size() >= 2:
+			_pinching = true               # 双指：只缩放，不拖不转
+			_dragging = null
+			_rotating = false
+			_pinch_dist = _two_touch_dist()
+			return
+		else:
+			_pinching = false
+	elif event is InputEventScreenDrag:
+		if _touches.has(event.index):
+			_touches[event.index] = event.position
+		if _pinching and _touches.size() >= 2:
+			var d := _two_touch_dist()
+			if _pinch_dist > 1.0 and d > 1.0:
+				_zoom_by(_pinch_dist / d)  # 两指分开→d变大→拉近
+			_pinch_dist = d
+			return
+	elif event is InputEventMagnifyGesture:
+		_zoom_by(1.0 / event.factor)       # 触控板放大手势
+		return
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_by(0.9)
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_by(1.0 / 0.9)
+			return
+
+	if _pinching:
+		return
+
+	# --- 拖令牌 / 旋转板子 ---
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		if event.pressed:
-			# 命中令牌→拖令牌；点到木板→不动；点到空白背景→旋转板子。
+			# 命中令牌→拖令牌；点到木板或空白→旋转板子。
 			_try_pick(event.position)
 		else:
 			if _dragging != null:
@@ -383,6 +426,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_to(event.position)
 		elif _rotating:
 			_rotate_by(event.relative)
+
+func _two_touch_dist() -> float:
+	var pts := _touches.values()
+	if pts.size() < 2:
+		return 0.0
+	return (pts[0] as Vector2).distance_to(pts[1])
+
+# 相机沿视线拉近/推远：ratio<1 拉近，>1 推远。
+func _zoom_by(ratio: float) -> void:
+	var d := clampf(_camera.position.length() * ratio, MIN_ZOOM, MAX_ZOOM)
+	_camera.position = _camera.position.normalized() * d
+	_camera.look_at(Vector3.ZERO, Vector3.UP)
 
 func _try_pick(screen_pos: Vector2) -> void:
 	var from := _camera.project_ray_origin(screen_pos)
