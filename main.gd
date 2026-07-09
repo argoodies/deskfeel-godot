@@ -199,7 +199,7 @@ func _make_button(data: Dictionary, is_top: bool) -> void:
 	body.add_child(col)
 
 	# 纽扣小字，浮在纽扣上沿以上 0.3 直径处。
-	_add_label(body, data.label, is_top, BUTTON_HEIGHT * 0.5 + 0.01, -(BUTTON_RADIUS * 1.6), 30)
+	_add_label(body, data.label, is_top, BUTTON_HEIGHT * 0.5 + 0.01, -(BUTTON_RADIUS * 1.6), 38)
 
 	var base_y := (TOP_SURF + BUTTON_HEIGHT * 0.5) if is_top else -(TOP_SURF + BUTTON_HEIGHT * 0.5)
 	# 背面那份 z 取反：翻面（180°）后它们同样落在该面的下方边缘。
@@ -244,7 +244,7 @@ func _make_token(data: Dictionary, is_top: bool) -> void:
 	# 令牌所在面的高度：正面坐在毛毯面上，背面坐在木板底面。
 	var base_y := (TOP_SURF + TOKEN_HEIGHT * 0.5) if is_top else -(TOP_SURF + TOKEN_HEIGHT * 0.5)
 	# 名字：小字，浮在令牌上沿以上 0.3 直径处（-Z 为屏幕上方）。
-	_add_label(body, data.name, is_top, TOKEN_HEIGHT * 0.5 + 0.02, -(TOKEN_RADIUS * 1.6), 42)
+	_add_label(body, data.name, is_top, TOKEN_HEIGHT * 0.5 + 0.02, -(TOKEN_RADIUS * 1.6), 52)
 
 	body.position = Vector3(data.pos.x, base_y, data.pos.z)
 	body.set_meta("token", true)
