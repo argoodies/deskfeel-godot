@@ -97,11 +97,39 @@ func _build_toggle() -> void:
 	_toggle_btn.offset_top = 80.0                 # 从角落往里挪，避开刘海安全区
 	_toggle_btn.offset_right = 164.0
 	_toggle_btn.offset_bottom = 204.0
-	_toggle_btn.add_theme_font_override("font", load("res://fonts/NotoEmoji-toggle.ttf"))
+	var emoji_font := load("res://fonts/NotoEmoji-toggle.ttf")
+	_toggle_btn.add_theme_font_override("font", emoji_font)
 	_toggle_btn.add_theme_font_size_override("font_size", 74)
 	_toggle_btn.text = "☀️"
 	_toggle_btn.pressed.connect(_on_toggle)
 	layer.add_child(_toggle_btn)
+
+	# 右上角刷新按钮：重跑开场（重新随机放置 + 翻转 4 周）。
+	var refresh := Button.new()
+	refresh.flat = true
+	refresh.focus_mode = Control.FOCUS_NONE
+	refresh.anchor_left = 1.0
+	refresh.anchor_right = 1.0
+	refresh.offset_left = -164.0
+	refresh.offset_top = 80.0
+	refresh.offset_right = -40.0
+	refresh.offset_bottom = 204.0
+	refresh.add_theme_font_override("font", emoji_font)
+	refresh.add_theme_font_size_override("font_size", 74)
+	refresh.text = "🔄"
+	refresh.pressed.connect(_restart)
+	layer.add_child(refresh)
+
+# 重新开始：清掉现有令牌/纽扣，重新随机放置并重播开场翻转。
+func _restart() -> void:
+	_sfx_click.play()
+	_dragging = null
+	_rotating = false
+	for p in _pieces:
+		p.queue_free()
+	_pieces.clear()
+	_spawn_tokens()
+	_play_intro()
 
 func _on_toggle() -> void:
 	_night = not _night
