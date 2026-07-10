@@ -242,17 +242,20 @@ func _piece_mesh(verts: Array, uvs: Array, tex: Texture2D) -> ArrayMesh:
 	mesh = sw.commit(mesh)
 	return mesh
 
-# 点击：让拼图沿随机轴翻转 180°（在其当前朝向基础上叠加，绕世界轴）。
+# 点击：让拼图沿随机轴翻转 180°。轴取在拼图片“当前自身坐标系”里（后乘），
+# 而不是锁死在初始法线所在的世界坐标系（前乘）——所以不论它已翻成什么朝向，
+# 下一次的随机轴都是相对它此刻的法线取的。
 func _flip(piece: Node3D) -> void:
 	_sfx_flip.play()
 	Input.vibrate_handheld(20)
-	var axis := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
-	if axis.length() < 0.01:
-		axis = Vector3.RIGHT
-	axis = axis.normalized()
+	# 球面均匀采样一个随机单位轴（避免立方体角落偏置）。
+	var z := randf_range(-1.0, 1.0)
+	var a := randf_range(0.0, TAU)
+	var rxy := sqrt(maxf(0.0, 1.0 - z * z))
+	var axis := Vector3(rxy * cos(a), rxy * sin(a), z)
 	var flip := Quaternion(axis, PI)
 	var from_q: Quaternion = piece.get_meta("base_quat")
-	var to_q := (flip * from_q).normalized()
+	var to_q := (from_q * flip).normalized()   # 后乘：轴在当前局部系
 	var tw := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_method(
 		func(w: float): piece.set_meta("base_quat", from_q.slerp(to_q, w)),
