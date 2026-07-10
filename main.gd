@@ -63,9 +63,6 @@ var _env: Environment
 var _night := false
 var _toggle_btn: Button
 var _refresh_btn: Button
-var _menu: PopupMenu                          # 长按弹出的系统菜单
-var _dialog: AcceptDialog                     # 角色介绍系统弹层
-var _menu_token: StaticBody3D
 
 func _ready() -> void:
 	randomize()                               # 每次启动随机（令牌位置/歪斜）
@@ -79,39 +76,7 @@ func _ready() -> void:
 	_build_board()
 	_spawn_tokens()
 	_build_toggle()
-	_build_menus()
 	_play_intro()
-
-# 长按弹出的系统菜单 + 角色介绍系统弹层。
-func _build_menus() -> void:
-	get_viewport().gui_embed_subwindows = true   # 弹窗在画布内渲染（Web/移动）
-	_menu = PopupMenu.new()
-	_menu.add_theme_font_override("font", _font)
-	_menu.add_theme_font_size_override("font_size", 34)
-	add_child(_menu)
-	_menu.id_pressed.connect(_on_menu_id)
-	_dialog = AcceptDialog.new()
-	_dialog.ok_button_text = "关闭"
-	_dialog.add_theme_font_override("title_font", _font)
-	_dialog.add_theme_font_size_override("title_font_size", 32)
-	var dl := _dialog.get_label()
-	dl.add_theme_font_override("font", _font)
-	dl.add_theme_font_size_override("font_size", 28)
-	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var ok := _dialog.get_ok_button()
-	ok.add_theme_font_override("font", _font)
-	ok.add_theme_font_size_override("font_size", 28)
-	add_child(_dialog)
-
-func _on_menu_id(id: int) -> void:
-	if not is_instance_valid(_menu_token):
-		return
-	if id == 0:                                # 查看角色介绍
-		_dialog.title = _menu_token.get_meta("cname")
-		_dialog.dialog_text = _menu_token.get_meta("cdesc")
-		_dialog.popup_centered(Vector2i(640, 380))
-	elif id == 1:                              # 盖/揭死亡幡
-		_toggle_shroud(_menu_token)
 
 # 开场：板子快速上下翻转 4 周后停下。
 func _play_intro() -> void:
@@ -537,9 +502,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_pick(event.position)
 		else:
 			if _dragging != null:
-				# 松手瞬间随机歪斜 ±15°。
-				_dragging.rotation = Vector3(0.0, randf_range(-deg_to_rad(15.0), deg_to_rad(15.0)), 0.0)
-				_sfx_drop.play()
+				if _press_moved:
+					# 拖动后松手：随机歪斜 ±15°。
+					_dragging.rotation = Vector3(0.0, randf_range(-deg_to_rad(15.0), deg_to_rad(15.0)), 0.0)
+					_sfx_drop.play()
+				elif _dragging.has_meta("shroudable"):
+					# 单击令牌（未移动）→ 盖/揭死亡幡。
+					_toggle_shroud(_dragging)
+					Input.vibrate_handheld(30)
 			_dragging = null
 			_rotating = false
 	elif event is InputEventMouseMotion or event is InputEventScreenDrag:
@@ -571,23 +541,8 @@ func _try_pick(screen_pos: Vector2) -> void:
 		_press_screen = screen_pos
 		_press_moved = false
 		_sfx_pick.play()
-		var tk := _dragging                    # 长按不移动 → 盖/揭死亡幡
-		get_tree().create_timer(0.45).timeout.connect(func(): _on_long_press(tk))
 	else:
 		_rotating = true                       # 点到木板或空白背景 → 旋转板子
-
-func _on_long_press(tk: StaticBody3D) -> void:
-	if _dragging == tk and not _press_moved and is_instance_valid(tk) and tk.has_meta("shroudable"):
-		Input.vibrate_handheld(40)             # 系统震动
-		_dragging = null                       # 长按后不再拖动/落下
-		_menu_token = tk
-		_menu.clear()
-		_menu.add_item("查看角色介绍", 0)
-		_menu.add_item("揭死亡幡" if tk.has_meta("shroud") else "盖死亡幡", 1)
-		_menu.reset_size()
-		var vp := get_viewport().get_visible_rect().size
-		_menu.position = Vector2i(int(vp.x * 0.5 - _menu.size.x * 0.5), int(_press_screen.y + 8.0))
-		_menu.popup()
 
 # 在令牌上叠加/移除死亡幡（平铺在令牌平面上，随令牌一起转翻）。
 func _toggle_shroud(tk: Node3D) -> void:
