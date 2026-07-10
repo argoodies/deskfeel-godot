@@ -382,6 +382,7 @@ func _make_token(data: Dictionary, is_top: bool, pos: Vector3) -> void:
 
 	body.position = Vector3(pos.x, base_y, pos.z)
 	body.set_meta("token", true)
+	body.set_meta("shroudable", true)  # 只有令牌可长按放死亡幡（纽扣不行）
 	body.set_meta("plane_y", base_y)   # 拖拽时贴着自己这一面移动
 	body.set_meta("radius", TOKEN_RADIUS)
 	_table.add_child(body)
@@ -535,7 +536,7 @@ func _try_pick(screen_pos: Vector2) -> void:
 		_rotating = true                       # 点到木板或空白背景 → 旋转板子
 
 func _on_long_press(tk: StaticBody3D) -> void:
-	if _dragging == tk and not _press_moved and is_instance_valid(tk):
+	if _dragging == tk and not _press_moved and is_instance_valid(tk) and tk.has_meta("shroudable"):
 		_toggle_shroud(tk)
 		Input.vibrate_handheld(40)             # 系统震动
 		_dragging = null                       # 长按后不再拖动/落下
@@ -547,7 +548,9 @@ func _toggle_shroud(tk: Node3D) -> void:
 		if is_instance_valid(old):
 			old.queue_free()
 		tk.remove_meta("shroud")
+		_sfx_pick.play()                       # 揭幡音效
 		return
+	_sfx_drop.play()                           # 盖幡音效
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = load("res://textures/shroud.png")
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
