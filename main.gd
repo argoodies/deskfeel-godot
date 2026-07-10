@@ -266,6 +266,7 @@ func _face_material(path: String) -> StandardMaterial3D:
 	m.roughness = 1.0            # 纸类：完全漫反射
 	m.metallic = 0.0
 	m.metallic_specular = 0.0    # 压低镜面反射，去掉高光
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED   # 彻底关掉镜面高光
 	return m
 
 # 在圆片某一面贴一张躺平的图（quad），y_off 是相对中心的高度，rot_x 决定朝上/朝下，radius 决定大小。
@@ -428,6 +429,7 @@ func _make_token(data: Dictionary, is_top: bool, pos: Vector3) -> void:
 	mat.roughness = 1.0
 	mat.metallic = 0.0
 	mat.metallic_specular = 0.0
+	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED   # 彻底关掉镜面高光
 	mesh.material_override = mat
 	body.add_child(mesh)
 
