@@ -65,6 +65,7 @@ var _env: Environment
 var _night := false
 var _toggle_btn: Button
 var _refresh_btn: Button
+var _help_btn: Button
 
 func _ready() -> void:
 	randomize()                               # 每次启动随机（令牌位置/歪斜）
@@ -188,19 +189,52 @@ func _build_toggle() -> void:
 	layer.add_child(_refresh_btn)
 
 	# 刷新按钮左侧相邻：问号引用按钮，点击弹出规则羊皮纸。
-	var help_btn := Button.new()
-	help_btn.flat = true
-	help_btn.focus_mode = Control.FOCUS_NONE
-	help_btn.anchor_left = 1.0
-	help_btn.anchor_right = 1.0
-	help_btn.offset_left = -428.0                            # 刷新按钮左侧，间隔 100
-	help_btn.offset_top = 80.0
-	help_btn.offset_right = -284.0
-	help_btn.offset_bottom = 224.0
-	help_btn.icon = load("res://textures/icon_help.png")    # 白色圆环内白色问号（透明底）
-	help_btn.expand_icon = true
-	help_btn.pressed.connect(_show_rules)
-	layer.add_child(help_btn)
+	_help_btn = Button.new()
+	_help_btn.flat = true
+	_help_btn.focus_mode = Control.FOCUS_NONE
+	_help_btn.anchor_left = 1.0
+	_help_btn.anchor_right = 1.0
+	_help_btn.icon = load("res://textures/icon_help.png")   # 白色圆环内白色问号（透明底）
+	_help_btn.expand_icon = true
+	_help_btn.pressed.connect(_show_rules)
+	layer.add_child(_help_btn)
+
+	# 按系统安全区（刘海/灵动岛/圆角）摆放三个按钮，并随窗口尺寸变化重算。
+	_apply_safe_area()
+	get_viewport().size_changed.connect(_apply_safe_area)
+
+# 把上排三个按钮放进安全区内：读取 DisplayServer 安全区（物理像素），
+# 按画布/屏幕缩放换算成 canvas_items 坐标，再定位。
+func _apply_safe_area() -> void:
+	var btn := 144.0
+	var m := 40.0                                   # 安全区内再留的边距
+	var gap := 100.0                                # 问号与刷新间隔
+	var vis := get_viewport().get_visible_rect().size
+	var win := Vector2(DisplayServer.window_get_size())
+	var top := m
+	var left := m
+	var right := m
+	if win.x > 1.0 and win.y > 1.0:
+		var sc := Vector2(vis.x / win.x, vis.y / win.y)
+		var safe := DisplayServer.get_display_safe_area()
+		top = safe.position.y * sc.y + m
+		left = safe.position.x * sc.x + m
+		right = (win.x - (safe.position.x + safe.size.x)) * sc.x + m
+	# 左上角：日/夜切换
+	_toggle_btn.offset_left = left
+	_toggle_btn.offset_right = left + btn
+	_toggle_btn.offset_top = top
+	_toggle_btn.offset_bottom = top + btn
+	# 右上角：刷新（锚在右边缘，偏移取负）
+	_refresh_btn.offset_right = -right
+	_refresh_btn.offset_left = -right - btn
+	_refresh_btn.offset_top = top
+	_refresh_btn.offset_bottom = top + btn
+	# 刷新左侧：问号
+	_help_btn.offset_right = -right - btn - gap
+	_help_btn.offset_left = -right - btn - gap - btn
+	_help_btn.offset_top = top
+	_help_btn.offset_bottom = top + btn
 
 # 重新开始：清掉现有令牌/纽扣，重新随机放置并重播开场翻转。
 func _restart() -> void:
