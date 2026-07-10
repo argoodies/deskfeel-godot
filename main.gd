@@ -56,6 +56,7 @@ var _font: FontFile
 var _sfx_pick: AudioStreamPlayer
 var _sfx_drop: AudioStreamPlayer
 var _sfx_click: AudioStreamPlayer
+var _sfx_shroud: AudioStreamPlayer
 
 var _dir: DirectionalLight3D                 # 主光/聚光/环境，用于日夜切换
 var _spot: SpotLight3D
@@ -220,6 +221,7 @@ func _build_audio() -> void:
 	_sfx_pick = _make_player("res://sounds/pick.wav", 0.0)
 	_sfx_drop = _make_player("res://sounds/drop.wav", 2.0)
 	_sfx_click = _make_player("res://sounds/click.wav", 0.0)
+	_sfx_shroud = _make_player("res://sounds/shroud.wav", 1.0)
 
 func _make_player(path: String, volume_db: float) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
@@ -551,9 +553,9 @@ func _toggle_shroud(tk: Node3D) -> void:
 		if is_instance_valid(old):
 			old.queue_free()
 		tk.remove_meta("shroud")
-		_sfx_pick.play()                       # 揭幡音效
+		_sfx_shroud.play()                     # 揭幡音效
 		return
-	_sfx_drop.play()                           # 盖幡音效
+	_sfx_shroud.play()                         # 盖幡音效
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = load("res://textures/shroud.png")
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
