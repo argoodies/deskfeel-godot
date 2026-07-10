@@ -56,6 +56,7 @@ var _cam_saved := Transform3D.IDENTITY
 var _rot_saved := Vector3.ZERO                # 进入特写前的板子旋转/手动旋转
 var _cam_tween: Tween
 var _closeup_layer: CanvasLayer
+var _closeup_box: VBoxContainer
 var _closeup_name: Label
 var _closeup_desc: Label
 
@@ -86,25 +87,20 @@ func _ready() -> void:
 	_build_closeup_ui()
 	_play_intro()
 
-# 技能介绍文字（无背景、描边、放在令牌下方附近）。
+# 技能介绍文字（无背景、描边、贴在令牌屏幕位置附近）。
 func _build_closeup_ui() -> void:
 	_closeup_layer = CanvasLayer.new()
 	_closeup_layer.layer = 2                   # 在按钮(1)之上
 	add_child(_closeup_layer)
-	var vb := VBoxContainer.new()
-	vb.anchor_left = 0.06
-	vb.anchor_right = 0.94
-	vb.anchor_top = 0.55                        # 令牌下方附近起
-	vb.anchor_bottom = 1.0
-	vb.offset_bottom = -40.0
-	vb.add_theme_constant_override("separation", 14)
-	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_closeup_layer.add_child(vb)
-	_closeup_name = _make_closeup_label(48, Color(0.98, 0.94, 1.0), 9)
-	vb.add_child(_closeup_name)
-	_closeup_desc = _make_closeup_label(28, Color(0.92, 0.89, 0.98), 7)
+	_closeup_box = VBoxContainer.new()
+	_closeup_box.add_theme_constant_override("separation", 10)
+	_closeup_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_closeup_layer.add_child(_closeup_box)
+	_closeup_name = _make_closeup_label(40, Color(0.98, 0.94, 1.0), 8)
+	_closeup_box.add_child(_closeup_name)
+	_closeup_desc = _make_closeup_label(26, Color(0.92, 0.89, 0.98), 6)
 	_closeup_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(_closeup_desc)
+	_closeup_box.add_child(_closeup_desc)
 	_closeup_layer.visible = false
 
 func _make_closeup_label(fsize: int, col: Color, outline: int) -> Label:
@@ -118,36 +114,34 @@ func _make_closeup_label(fsize: int, col: Color, outline: int) -> Label:
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
-# 单击令牌 → 木板转平正对相机 + 俯视特写 + 令牌旁技能介绍。
+# 单击令牌 → 在令牌旁弹出技能介绍（不动相机、不转板子）。
 func _enter_closeup(tk: Node3D) -> void:
 	if not tk.has_meta("cname"):
-		return                                 # 只有角色令牌能特写（纽扣不行）
+		return                                 # 只有角色令牌能（纽扣不行）
 	_closeup = true
-	_cam_saved = _camera.transform
-	_rot_saved = _table.rotation
-	# 木板转到正对相机：正面令牌用水平(0)，背面令牌翻 180°，使该令牌面朝上。
-	var plane_y: float = tk.get_meta("plane_y")
-	var target_rot := Vector3.ZERO if plane_y > 0.0 else Vector3(PI, 0.0, 0.0)
-	var wpos: Vector3 = Basis.from_euler(target_rot) * tk.position   # 转平后令牌世界位置
-	var cam_pos := wpos + Vector3(0.0, 0.92, 0.20)                   # 近距、近俯视
-	var cam_xf := Transform3D(Basis(), cam_pos).looking_at(wpos, Vector3.BACK)
-	if _cam_tween != null and _cam_tween.is_valid():
-		_cam_tween.kill()
-	_cam_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_cam_tween.tween_property(_table, "rotation", target_rot, 0.5)   # 木板转平
-	_cam_tween.tween_property(_camera, "transform", cam_xf, 0.5)
+	_sfx_pick.play()
 	_closeup_name.text = tk.get_meta("cname")
 	_closeup_desc.text = tk.get_meta("cdesc")
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var bw: float = minf(vp.x * 0.88, 600.0)
+	_closeup_desc.custom_minimum_size = Vector2(bw, 0.0)
+	await get_tree().process_frame             # 等文字换行排版
+	if not _closeup or not is_instance_valid(tk):
+		return
+	var bh: float = _closeup_box.get_combined_minimum_size().y
+	var sp: Vector2 = _camera.unproject_position(tk.global_position)   # 令牌屏幕位置
+	var px: float = clampf(sp.x - bw * 0.5, 12.0, vp.x - bw - 12.0)
+	var py: float = sp.y + 54.0                 # 令牌下方
+	if py + bh > vp.y - 12.0:
+		py = sp.y - 54.0 - bh                   # 放不下就放令牌上方
+	py = clampf(py, 12.0, vp.y - bh - 12.0)
+	_closeup_box.position = Vector2(px, py)
+	_closeup_box.size = Vector2(bw, bh)
 	_closeup_layer.visible = true
-	_sfx_pick.play()
 
 func _exit_closeup() -> void:
-	_closeup = false                           # _process 恢复：把板子 lerp 回原旋转
+	_closeup = false
 	_closeup_layer.visible = false
-	if _cam_tween != null and _cam_tween.is_valid():
-		_cam_tween.kill()
-	_cam_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_cam_tween.tween_property(_camera, "transform", _cam_saved, 0.45)
 	_sfx_drop.play()
 
 # 开场：板子快速上下翻转 4 周后停下。
