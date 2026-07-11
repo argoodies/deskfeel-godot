@@ -464,7 +464,9 @@ void fragment() {
 		col += s * b * illum * weight;
 		illum *= decayf;
 	}
-	COLOR = vec4(col * exposure, 1.0);
+	// 中心淡出：光心处不叠成亮球，只保留向外发散的光柱。
+	float center_fade = smoothstep(0.0, 0.12, distance(SCREEN_UV, light_uv));
+	COLOR = vec4(col * exposure * center_fade, 1.0);
 }
 """
 	_godray_mat.shader = sh
