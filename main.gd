@@ -478,10 +478,12 @@ func _build_spray_fx() -> void:
 	p.amount = 36
 	p.lifetime = 0.5
 	p.local_coords = false                 # 世界空间：拖动时留下水痕
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE_SURFACE   # 从小球面发射，不再单点堆成一团
+	p.emission_sphere_radius = 0.06
 	p.direction = Vector3(0.0, 0.5, 1.0).normalized()
-	p.spread = 55.0
-	p.initial_velocity_min = 1.3
-	p.initial_velocity_max = 3.0
+	p.spread = 65.0
+	p.initial_velocity_min = 2.2           # 提速：新生水珠立刻飞出，没有中心团
+	p.initial_velocity_max = 4.2
 	p.gravity = Vector3(0.0, -5.0, 0.0)
 	p.damping_min = 1.0
 	p.damping_max = 2.5
@@ -495,7 +497,7 @@ func _build_spray_fx() -> void:
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_texture = load("res://textures/droplet.png")   # 圆形水珠贴图
-	mat.albedo_color = Color(0.4, 0.5, 0.62, 0.7)      # 压暗到神光阈值(0.72)以下，避免被拉成发光大团
+	mat.albedo_color = Color(0.6, 0.72, 0.9, 0.8)      # 恢复的亮水色（反光）
 	qm.material = mat
 	p.mesh = qm
 	add_child(p)
