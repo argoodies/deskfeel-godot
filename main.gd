@@ -54,7 +54,7 @@ var _sfx_whoosh: AudioStreamPlayer
 var _godray_mat: ShaderMaterial
 var _spray_fx: CPUParticles3D             # 喷水水花粒子
 var _wash_hitting := false                 # 正在擦拭且射线命中了模型
-var _move_grace := 0.0                      # 手指移动的余量时间：>0 才喷水珠
+var _moved := false                         # 本帧手指是否移动：移动才喷水珠
 var _dir: DirectionalLight3D
 var _spot: SpotLight3D
 var _env: Environment
@@ -622,11 +622,11 @@ func _process(delta: float) -> void:
 			_check_coverage()
 	else:
 		_wash_hitting = false
-	_move_grace = maxf(0.0, _move_grace - delta)
-	# 只在"擦拭中 + 命中模型 + 手指正在移动"时喷水珠：停下/松手就不再生成，避免叠加变亮。
-	var want_emit := _washing and _wash_hitting and _move_grace > 0.0
+	# 只在"擦拭中 + 命中模型 + 本帧手指移动"时喷水珠：停下/松手就不再生成，避免叠加变亮。
+	var want_emit := _washing and _wash_hitting and _moved
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
+	_moved = false                            # 每帧消费，无余量
 	var target := Vector3(_manual_rot.x, _manual_rot.y, 0.0)
 	var weight := 1.0 - pow(0.002, delta)
 	_world.rotation = _world.rotation.lerp(target, weight)
@@ -673,7 +673,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _touches.size() == 1:
 			if _washing:
 				_wash_screen = event.position
-				_move_grace = 0.1               # 移动了 → 喷水
+				_moved = true                   # 移动了 → 本帧喷水
 			elif _bg_rotating:
 				_rotate_by(event.relative)
 		elif _touches.size() == 2:
@@ -707,7 +707,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if _washing:
 			_wash_screen = event.position
-			_move_grace = 0.1               # 移动了 → 喷水
+			_moved = true                   # 移动了 → 本帧喷水
 		elif _bg_rotating or _rotating:
 			_rotate_by(event.relative)
 
