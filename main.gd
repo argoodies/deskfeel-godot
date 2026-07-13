@@ -1096,6 +1096,7 @@ func _set_washing(on: bool, pos: Vector2) -> void:
 	if on and not _washing:
 		_washing = true
 		_wash_screen = pos
+		_spray(pos)                        # 先把发射点移到当前触点，否则 restart 会在上次松手位置喷出残留水珠
 		if _fade_tween != null and _fade_tween.is_valid():
 			_fade_tween.kill()              # 取消淡出
 		var c := _droplet_mat.albedo_color
