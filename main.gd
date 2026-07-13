@@ -103,8 +103,7 @@ func _ready() -> void:
 	_build_godrays()
 	_build_toggle()
 	_apply_loaded_ui()                        # 恢复存档的按钮态/日夜
-	if _btn_state != ST_DELIVERED:            # 交付态不做入场旋转
-		_spin4()
+	_spin4(_btn_state != ST_DELIVERED)        # 交付态照样转模型，但右上按钮不转
 
 # ---------- 存档 ----------
 
@@ -519,7 +518,7 @@ func _check_coverage() -> void:
 		_enter_circle()
 
 # 让水晶旋转 4 整圈后回正；刷新按钮图标同步转 4 圈。
-func _spin4() -> void:
+func _spin4(spin_button := true) -> void:
 	_spinning = true
 	_manual_rot = Vector3.ZERO
 	var axis := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
@@ -535,7 +534,7 @@ func _spin4() -> void:
 	tw.tween_callback(func():
 		_manual_rot = _world.rotation
 		_spinning = false)
-	if _refresh_btn != null:
+	if spin_button and _refresh_btn != null:      # 交付态只转模型，右上按钮不转
 		_refresh_btn.rotation = 0.0
 		create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT) \
 			.tween_property(_refresh_btn, "rotation", TAU * 4.0, 1.9)
@@ -845,7 +844,7 @@ func _pick_level(i: int) -> void:
 		_delivered = true
 		_build_model(_model_path)
 		_show_delivered_button()                     # 对勾 1 秒 → 刷新
-		# 交付态不做入场旋转
+		_spin4(false)                                # 转模型，但右上按钮不转
 	else:
 		_btn_state = ST_REFRESH
 		_delivered = false
