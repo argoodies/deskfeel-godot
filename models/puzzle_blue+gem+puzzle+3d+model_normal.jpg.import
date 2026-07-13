@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cwh6p0fdw6326"
-path="res://.godot/imported/fortuneteller_crystal+ball+3d+model_normal.jpg-06babf708976a943fe6197e6321d8bec.ctex"
+uid="uid://c8rhrtoqkrpip"
+path="res://.godot/imported/puzzle_blue+gem+puzzle+3d+model_normal.jpg-801cd29a53c39fc21d6d9c8cfef52b75.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "a7e47da8b207f4f339b24e09c7c964f8"
+"md5": "696ca054c449bfa3a260ba946cd6deba"
 }
 
 [deps]
 
-source_file="res://models/fortuneteller_crystal+ball+3d+model_normal.jpg"
-dest_files=["res://.godot/imported/fortuneteller_crystal+ball+3d+model_normal.jpg-06babf708976a943fe6197e6321d8bec.ctex"]
+source_file="res://models/puzzle_blue+gem+puzzle+3d+model_normal.jpg"
+dest_files=["res://.godot/imported/puzzle_blue+gem+puzzle+3d+model_normal.jpg-801cd29a53c39fc21d6d9c8cfef52b75.ctex"]
 
 [params]
 

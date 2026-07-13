@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://b8o3bsds20782"
-path="res://.godot/imported/fortuneteller.glb-f673501e6a45eaab76760784f4c6d74b.scn"
+uid="uid://dxdvhxvmgw5k4"
+path="res://.godot/imported/puzzle.glb-594bbec51761f375a0b37a20d81ba241.scn"
 
 [deps]
 
-source_file="res://models/fortuneteller.glb"
-dest_files=["res://.godot/imported/fortuneteller.glb-f673501e6a45eaab76760784f4c6d74b.scn"]
+source_file="res://models/puzzle.glb"
+dest_files=["res://.godot/imported/puzzle.glb-594bbec51761f375a0b37a20d81ba241.scn"]
 
 [params]
 
