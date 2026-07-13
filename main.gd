@@ -598,11 +598,11 @@ func _play_next() -> void:
 	_sfx_click.play()
 	_load_random_level()
 
-# 冲刷进度检测：无尘顶点占比 ≥ 99.9% → 进入可交付态。
+# 冲刷进度检测：无尘顶点占比达 100% → 进入可交付态。
 func _check_coverage() -> void:
 	if _btn_state != ST_REFRESH or _uvs.is_empty():
 		return
-	if _coverage() >= 0.999:
+	if _coverage() >= 1.0:
 		_enter_circle()
 
 # 让水晶旋转 4 整圈后停在随机朝向。
