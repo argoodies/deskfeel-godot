@@ -52,7 +52,6 @@ var _sfx_reward: AudioStreamPlayer
 var _sfx_ding: AudioStreamPlayer
 var _sfx_click: AudioStreamPlayer
 var _sfx_whoosh: AudioStreamPlayer
-var _sfx_enter: AudioStreamPlayer           # 换关/进关：迷团钟琴音
 var _godray_mat: ShaderMaterial
 var _spray_fx: CPUParticles3D             # 喷水水花粒子
 var _droplet_mat: StandardMaterial3D      # 水珠共享材质（松手时整体淡出）
@@ -99,9 +98,8 @@ func _ready() -> void:
 	_build_toggle()
 	if _night:
 		_apply_lighting(false)
-	# 每次启动都是一个新的未完成水晶；进入未完成主场景 → 迷团音。
+	# 每次启动都是一个新的未完成水晶。
 	_load_random_level()
-	_sfx_enter.play()
 
 # ---------- 存档 ----------
 
@@ -174,10 +172,6 @@ func _build_audio() -> void:
 	_sfx_whoosh.stream = load("res://sounds/shroud.wav")
 	_sfx_whoosh.volume_db = 0.0
 	add_child(_sfx_whoosh)
-	_sfx_enter = AudioStreamPlayer.new()
-	_sfx_enter.stream = load("res://sounds/enter.wav")   # 换关/进关：迷团钟琴音
-	_sfx_enter.volume_db = 0.0
-	add_child(_sfx_enter)
 
 func _build_environment() -> void:
 	var we := WorldEnvironment.new()
@@ -925,7 +919,7 @@ func _pick_level(i: int) -> void:
 		_build_model(_model_path)
 		_seed_dust()
 		_hide_bottom_ui()
-		_sfx_enter.play()                            # 进入未完成场景 → 迷团音
+		_sfx_click.play()                            # 进入未完成场景 → 按键音
 	_spin4()                                         # 入场旋转
 	_save_state()
 
