@@ -283,8 +283,8 @@ func _press_pop(b: Control) -> void:
 		return
 	b.pivot_offset = b.size * 0.5             # 绕中心缩放
 	var tw := create_tween().set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(b, "scale", Vector2(1.18, 1.18), 0.09).set_ease(Tween.EASE_OUT)
-	tw.tween_property(b, "scale", Vector2.ONE, 0.13).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(b, "scale", Vector2(1.4, 1.4), 0.10).set_ease(Tween.EASE_OUT)
+	tw.tween_property(b, "scale", Vector2.ONE, 0.14).set_ease(Tween.EASE_IN_OUT)
 
 func _apply_safe_area() -> void:
 	var btn := 144.0                           # 左上日/夜按钮
