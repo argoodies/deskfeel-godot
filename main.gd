@@ -129,7 +129,7 @@ func _apply_bottom_state() -> void:
 	if _btn_state == ST_CIRCLE:
 		_show_circle()
 	elif _btn_state == ST_DELIVERED:
-		_reveal_dual(false)
+		_show_intro_btns(false)
 	else:
 		_hide_bottom_ui()
 
@@ -559,10 +559,11 @@ func _reveal_dual(animate: bool) -> void:
 		tw.tween_property(_map_btn, "modulate:a", 1.0, 0.4)
 		tw.tween_property(_play_btn, "modulate:a", 1.0, 0.4)
 
-# 覆尘关卡开局：右上先淡入画廊+播放（作快捷入口），标记为"待首次操作淡出"。
-func _show_intro_btns() -> void:
-	_reveal_dual(true)
+# 右上画廊+播放显示为"活跃可淡出"态（擦拭/旋转淡出，静止 3s 回归）。覆尘态与交付态共用。
+func _show_intro_btns(animate := true) -> void:
+	_reveal_dual(animate)
 	_intro_btns = true
+	_idle_time = 0.0
 
 # 首次擦拭/旋转 → 让开局的画廊+播放淡出隐藏。
 func _fade_out_intro_btns() -> void:
@@ -610,7 +611,7 @@ func _enter_delivered() -> void:
 		_circle_btn.visible = false
 		_deliver_lock = false
 		if _btn_state == ST_DELIVERED:
-			_reveal_dual(true))
+			_show_intro_btns())          # 刚完成额外显示；之后旋转淡出、静止回归
 
 # ▶️ 播放：换关（随机一个未清洗水晶）。换关本身只出按键音。
 # 稍等一下再换关，让按钮"变大"动效先播完（否则底部按钮会立刻隐藏，看不到弹动）。
@@ -944,7 +945,7 @@ func _pick_level(i: int) -> void:
 		_btn_state = ST_DELIVERED
 		_delivered = true
 		_build_model(_model_path)
-		_reveal_dual(false)                          # 底部双按钮：画廊 + 播放
+		_show_intro_btns(false)                      # 右上双按钮（旋转淡出、静止回归）
 		_sfx_click.play()                            # 进入已完成场景 → 按键音
 	else:
 		_btn_state = ST_REFRESH
@@ -1113,8 +1114,8 @@ func _process(delta: float) -> void:
 	if _spray_fx.emitting != want_emit:
 		_spray_fx.emitting = want_emit
 	_moved = false                            # 每帧消费，无余量
-	# 覆尘擦拭态：擦拭中清零；否则累计闲置，满 3s 让右上按钮重新淡入。
-	if _btn_state == ST_REFRESH and not _delivered:
+	# 覆尘态与交付态：擦拭中清零；否则累计闲置，满 3s 让右上按钮重新淡入。
+	if _btn_state == ST_REFRESH or _btn_state == ST_DELIVERED:
 		if _washing:
 			_idle_time = 0.0
 		elif not _intro_btns:
