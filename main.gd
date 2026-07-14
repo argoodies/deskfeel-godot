@@ -594,9 +594,12 @@ func _enter_delivered() -> void:
 			_reveal_dual(true))
 
 # ▶️ 播放：换关（随机一个未清洗水晶）。换关本身只出按键音。
+# 稍等一下再换关，让按钮"变大"动效先播完（否则底部按钮会立刻隐藏，看不到弹动）。
 func _play_next() -> void:
 	_sfx_click.play()
-	_load_random_level()
+	var tw := create_tween()
+	tw.tween_interval(0.22)
+	tw.tween_callback(_load_random_level)
 
 # 冲刷进度检测：无尘顶点占比达 100% → 进入可交付态。
 func _check_coverage() -> void:
