@@ -851,7 +851,7 @@ func _open_room() -> void:
 	_room_inner_r = inner_r
 	_room_y_lo = y_lo
 	_room_y_hi = y_hi
-	_room_burst_r = jar_r * 0.6
+	_room_burst_r = jar_r * 1.15
 	_room_mmis.clear()
 	_room_moving = false
 
@@ -871,7 +871,7 @@ func _open_room() -> void:
 	wbody.mesh = wm
 	wbody.position.y = -jar_h * 0.5 + wh * 0.5
 	_room_waterbody_mat = ShaderMaterial.new(); _room_waterbody_mat.shader = _make_water_body_shader()
-	_room_waterbody_mat.set_shader_parameter("burst", jar_r * 0.6)
+	_room_waterbody_mat.set_shader_parameter("burst", jar_r * 1.15)
 	wbody.material_override = _room_waterbody_mat
 	_room_root.add_child(wbody)
 	# 水面（可涟漪的圆盘）。
@@ -881,7 +881,7 @@ func _open_room() -> void:
 	surf.mesh = sm; surf.position.y = water_top
 	_room_water_mat = ShaderMaterial.new(); _room_water_mat.shader = _make_water_surface_shader()
 	_room_water_mat.set_shader_parameter("radius", _room_water_r)
-	_room_water_mat.set_shader_parameter("burst", jar_r * 0.6)
+	_room_water_mat.set_shader_parameter("burst", jar_r * 1.15)
 	surf.material_override = _room_water_mat
 	_room_root.add_child(surf)
 	# 灯光：瓶顶上方俯照 + 中心补光。
@@ -1042,7 +1042,7 @@ func _room_input(event: InputEvent) -> void:
 
 # 物理模拟：涟漪波前经过 → 给冲量；每帧积分位置，水阻力(阻尼)减速，限制在瓶内。
 func _room_sim(delta: float) -> void:
-	var DRAG := exp(-0.9 * delta)                     # 水阻力（减小 → 漂得更久）
+	var DRAG := exp(-0.4 * delta)                     # 水阻力更小 → 漂得更久
 	var GRAV := 2.2                                   # 重力：最终沉底
 	var moving := false
 	for entry in _room_mmis:
@@ -1059,7 +1059,7 @@ func _room_sim(delta: float) -> void:
 			v.y -= GRAV * delta                       # 重力下沉
 			p += v * delta
 			# 限制在瓶内：撞壁反弹（带回弹系数，能量损失后终会沉底）。
-			var REST := 0.6
+			var REST := 0.85
 			var rxz := Vector2(p.x, p.z)
 			if rxz.length() > _room_inner_r:
 				rxz = rxz.normalized() * _room_inner_r
