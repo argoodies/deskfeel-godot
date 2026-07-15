@@ -87,8 +87,15 @@ var _room_touches: Dictionary = {}              # 空间内多点触摸（拖拽
 var _room_pinch := 0.0                           # 上一帧双指间距
 var _room_yaw_vel := 0.0                         # 松手后惯性角速度（弧度/秒）
 var _room_pitch_vel := 0.0
-var _room_grab_mmi: MultiMeshInstance3D          # 正在拖动的水晶所属 MultiMesh
-var _room_grab_idx := -1                          # 正在拖动的实例索引
+const JAR_MARGIN := 2.0                            # 瓶壁到最外水晶的余量
+const MAX_RIP := 6                                 # 同时存在的涟漪数
+var _room_cy := 0.0                               # 相机注视点 y（瓶内水晶中心高度）
+var _room_water_mat: ShaderMaterial               # 水面材质（承载涟漪）
+var _room_water_r := 8.0                          # 水面半径
+var _room_water_top := 3.0                        # 水面高度
+var _room_time := 0.0                             # 涟漪时钟
+var _room_rips: Array = []                        # 最近涟漪 Vector4(x, z, start, active)
+var _rip_idx := 0
 var _cam_saved := Transform3D.IDENTITY
 var _counts: Dictionary = {}                  # 模型 path -> 完成(交付)次数
 var _centered_cache: Dictionary = {}          # path -> 居中归一化后的 ArrayMesh 缓存
@@ -809,60 +816,77 @@ func _open_room() -> void:
 		_room_root.queue_free()
 	_room_root = Node3D.new()
 	add_child(_room_root)
-	# 格子边长 = 车的桌面占地（≈ TARGET_W * 显示缩放），让车刚好占一格。
-	var cell := TARGET_W * TABLE_DISP * 1.12
-	# 中心向外的格子中心列表（一物一格），全局按类型顺序分配。
+	# 涟漪状态复位。
+	_room_time = 0.0
+	_rip_idx = 0
+	_room_rips.clear()
+	for i in MAX_RIP:
+		_room_rips.append(Vector4.ZERO)
+	# 按完成总数决定瓶子尺寸（水晶 3D 悬浮堆半径 → 瓶半径/高度）。
 	var total := 0
 	for path in MODELS:
 		total += mini(int(_counts.get(path, 0)), ROOM_CAP)
-	var cells := _gen_cells(maxi(total, 1), cell)
-	# 透明水晶板：固定边长 = 拼图的 15 倍（不随规模变大）。
-	var grid_half: float = sqrt(float(maxi(total, 1))) * cell * 0.9 + cell * 3.0
-	var board: float = TARGET_W * TABLE_DISP * 15.0
-	var plane := MeshInstance3D.new()
-	var pmesh := PlaneMesh.new()
-	pmesh.size = Vector2(board, board)
-	plane.mesh = pmesh
-	var pmat := ShaderMaterial.new()
-	pmat.shader = _make_light_plane_shader()
-	pmat.set_shader_parameter("board", board)
-	plane.material_override = pmat
-	_room_root.add_child(plane)
-	# 真实灯光照亮水晶：高处俯照 + 中心补光。
+	var disp := TARGET_W * TABLE_DISP
+	var pack_r := disp * 0.95 * pow(float(maxi(total, 1)), 1.0 / 3.0)   # 悬浮堆半径
+	var jar_r := pack_r + JAR_MARGIN + disp * 0.5
+	var jar_h := jar_r * 2.3
+	var water_top := jar_h * 0.5 - disp                          # 水面略低于瓶口
+	var inner_r := jar_r * 0.72                                  # 水晶分布最大半径（不贴壁）
+	var y_lo := -jar_h * 0.5 + disp                             # 最低（贴瓶底之上）
+	var y_hi := water_top - disp                                # 最高（浸在水面下）
+	_room_water_r = jar_r * 0.97
+	_room_water_top = water_top
+	_room_cy = (y_lo + y_hi) * 0.5
+
+	# 瓶子（透明水晶玻璃壳）。
+	var jar := MeshInstance3D.new()
+	var jm := CylinderMesh.new()
+	jm.top_radius = jar_r; jm.bottom_radius = jar_r; jm.height = jar_h; jm.radial_segments = 56
+	jar.mesh = jm
+	var jmat := ShaderMaterial.new(); jmat.shader = _make_jar_shader()
+	jar.material_override = jmat
+	_room_root.add_child(jar)
+	# 水体（瓶内充满水：半透明蓝的圆柱，从瓶底到水面）。
+	var wbody := MeshInstance3D.new()
+	var wm := CylinderMesh.new()
+	var wh := water_top - (-jar_h * 0.5)
+	wm.top_radius = _room_water_r; wm.bottom_radius = _room_water_r; wm.height = wh; wm.radial_segments = 56
+	wbody.mesh = wm
+	wbody.position.y = -jar_h * 0.5 + wh * 0.5
+	var wbmat := ShaderMaterial.new(); wbmat.shader = _make_water_body_shader()
+	wbody.material_override = wbmat
+	_room_root.add_child(wbody)
+	# 水面（可涟漪的圆盘）。
+	var surf := MeshInstance3D.new()
+	var sm := PlaneMesh.new()
+	sm.size = Vector2(jar_r * 2.05, jar_r * 2.05)
+	surf.mesh = sm; surf.position.y = water_top
+	_room_water_mat = ShaderMaterial.new(); _room_water_mat.shader = _make_water_surface_shader()
+	_room_water_mat.set_shader_parameter("radius", _room_water_r)
+	surf.material_override = _room_water_mat
+	_room_root.add_child(surf)
+	# 灯光：瓶顶上方俯照 + 中心补光。
 	var top := SpotLight3D.new()
-	top.position = Vector3(0, 36, 0)
-	top.rotation = Vector3(-PI * 0.5, 0, 0)                     # 朝下
-	top.light_energy = 14.0; top.spot_range = 120.0; top.spot_angle = 46.0
+	top.position = Vector3(0, jar_h * 0.5 + 12.0, 0)
+	top.rotation = Vector3(-PI * 0.5, 0, 0)
+	top.light_energy = 12.0; top.spot_range = jar_h * 3.0; top.spot_angle = 46.0
 	top.light_color = Color(0.85, 0.92, 1.0); top.shadow_enabled = false
 	_room_root.add_child(top)
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, 4, 0); fill.light_energy = 3.0; fill.omni_range = board
+	fill.position = Vector3(0, _room_cy, 0); fill.light_energy = 3.0; fill.omni_range = jar_r * 4.0
 	fill.light_color = Color(0.5, 0.65, 1.0); fill.shadow_enabled = false
 	_room_root.add_child(fill)
-	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，一物一格摆在棋盘上。
+	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，悬浮在瓶内水中。
 	var g := 0
 	for path in MODELS:
 		var cnt := mini(int(_counts.get(path, 0)), ROOM_CAP)
 		if cnt <= 0:
 			continue
-		_room_root.add_child(_build_room_multimesh(path, cnt, g, cells))
+		_room_root.add_child(_build_room_multimesh(path, cnt, g, inner_r, y_lo, y_hi))
 		g += cnt
-	# 相机距离随棋盘范围自适应。
-	_room_dist = clampf(grid_half * 2.0 + 10.0, 16.0, 120.0)
+	# 相机距离随瓶大小自适应。
+	_room_dist = clampf(jar_r * 2.6 + jar_h * 0.6, 16.0, 150.0)
 	_update_room_cam()
-
-# 生成 n 个"中心向外"排序的格子中心（世界 XZ），每格间隔 cell。
-func _gen_cells(n: int, cell: float) -> PackedVector2Array:
-	var k := int(ceil(sqrt(float(n)))) + 2
-	var all: Array = []
-	for c in range(-k, k + 1):
-		for r in range(-k, k + 1):
-			all.append(Vector2(float(c), float(r)))
-	all.sort_custom(func(a, b): return a.length_squared() < b.length_squared())
-	var out := PackedVector2Array()
-	for i in mini(n, all.size()):
-		out.append((all[i] as Vector2) * cell)
-	return out
 
 func _close_room() -> void:
 	_in_room = false
@@ -876,7 +900,6 @@ func _close_room() -> void:
 	_camera.transform = _cam_saved
 	_touches.clear()
 	_room_touches.clear()
-	_room_release()
 
 # 归一化+居中后的 ArrayMesh（顶点减去中心、乘缩放），供 MultiMesh 复用；同时缓存半高。
 func _centered_mesh(path: String) -> ArrayMesh:
@@ -904,20 +927,26 @@ func _centered_mesh(path: String) -> ArrayMesh:
 	_centered_h[path] = halfy
 	return out
 
-func _build_room_multimesh(path: String, count: int, start_g: int, cells: PackedVector2Array) -> MultiMeshInstance3D:
+func _build_room_multimesh(path: String, count: int, start_g: int, inner_r: float, y_lo: float, y_hi: float) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = _centered_mesh(path)
 	mm.instance_count = count
-	var lift: float = float(_centered_h.get(path, TARGET_W * 0.5)) * TABLE_DISP   # 底面贴平面
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(hash(path)) + start_g * 7919
+	var GA := 2.3999632
 	for i in count:
-		# 一物一格：按全局中心向外顺序落在棋盘格中心。
-		var g := start_g + i
-		var c2: Vector2 = cells[g] if g < cells.size() else Vector2.ZERO
-		var pos := Vector3(c2.x, lift, c2.y)
-		var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * TABLE_DISP)
+		# 圆柱体内低差异分布：随机方向/高度，限制在瓶内（不出瓶）。
+		var g := float(start_g + i) + 0.5
+		var r := inner_r * sqrt(fposmod(g * 0.7548776662, 1.0))
+		var theta := g * GA
+		var y := lerpf(y_lo, y_hi, fposmod(g * 0.5698402910, 1.0))
+		var pos := Vector3(r * cos(theta), y, r * sin(theta))
+		# 随机整体朝向（在水里各朝各方向）+ 统一显示缩放。
+		var ax := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
+		if ax.length() < 0.01:
+			ax = Vector3.UP
+		var basis := Basis(ax.normalized(), rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * TABLE_DISP)
 		mm.set_instance_transform(i, Transform3D(basis, pos))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
@@ -927,41 +956,35 @@ func _build_room_multimesh(path: String, count: int, start_g: int, cells: Packed
 	return mmi
 
 func _update_room_cam() -> void:
-	# 球坐标环绕桌面注视点：仰角 _room_pitch 受限([60°,88°])，桌板倾斜≤30°。
+	# 球坐标环绕瓶内水晶中心。
 	var e := _room_pitch
-	var center := Vector3(0.0, ROOM_CENTER_Y, 0.0)
+	var center := Vector3(0.0, _room_cy, 0.0)
 	var dirv := Vector3(cos(e) * sin(_room_yaw), sin(e), cos(e) * cos(_room_yaw))
 	_camera.transform = Transform3D(Basis.IDENTITY, center + dirv * _room_dist)
 	_camera.look_at(center, Vector3.UP)
 
-# 成就空间内触摸：单指拖拽旋转视角，双指捏合缩放；鼠标滚轮也可缩放。
+# 成就空间内触摸：单指落下=点水起涟漪、拖拽=旋转视角，双指捏合缩放；鼠标滚轮缩放。
 func _room_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_room_touches[event.index] = event.position
-			_room_yaw_vel = 0.0                       # 抓住时停止惯性
+			_room_yaw_vel = 0.0
 			_room_pitch_vel = 0.0
 			if _room_touches.size() == 1:
-				_room_pick(event.position)            # 单指落在水晶上 → 拿起它
+				_room_ripple(event.position)          # 点击处扰动水面
 		else:
 			_room_touches.erase(event.index)
-			if _room_touches.size() == 0:
-				_room_release()
 		if _room_touches.size() == 2:
-			_room_release()                           # 双指改缩放，放下水晶
 			_room_pinch = _room_two_dist()
 	elif event is InputEventScreenDrag:
 		if _room_touches.has(event.index):
 			_room_touches[event.index] = event.position
 		if _room_touches.size() == 1:
-			if _room_grab_idx >= 0:
-				_room_move(event.position)            # 拖动水晶
-			else:
-				_room_orbit(event.relative)           # 拖动空白 → 旋转视角
+			_room_orbit(event.relative)
 		elif _room_touches.size() == 2:
 			var d := _room_two_dist()
 			if _room_pinch > 0.0:
-				_room_zoom(d - _room_pinch)       # 张开=拉近，收拢=拉远
+				_room_zoom(d - _room_pinch)
 			_room_pinch = d
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -969,67 +992,33 @@ func _room_input(event: InputEvent) -> void:
 			if event.pressed:
 				_room_yaw_vel = 0.0
 				_room_pitch_vel = 0.0
-				_room_pick(event.position)
-			else:
-				_room_release()
+				_room_ripple(event.position)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_room_zoom(40.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			_room_zoom(-40.0)
 	elif event is InputEventMouseMotion:
 		if _room_dragging:
-			if _room_grab_idx >= 0:
-				_room_move((event as InputEventMouseMotion).position)
-			else:
-				_room_orbit((event as InputEventMouseMotion).relative)
+			_room_orbit((event as InputEventMouseMotion).relative)
 
-const ROOM_PICK_R := 1.4                          # 拾取阈值（世界半径）
-
-# 射线拾取离视线最近的水晶实例；命中则记为"拿起"。
-func _room_pick(pos: Vector2) -> void:
-	_room_grab_mmi = null
-	_room_grab_idx = -1
-	if _room_root == null or not is_instance_valid(_room_root):
+# 点击处向水面投射，落在水面圆内则加一道涟漪（超出则夹到边缘）。
+func _room_ripple(pos: Vector2) -> void:
+	if _room_water_mat == null:
 		return
-	var from := _camera.project_ray_origin(pos)
-	var dir := _camera.project_ray_normal(pos)
-	var best_t := INF
-	for child in _room_root.get_children():
-		if not (child is MultiMeshInstance3D):
-			continue
-		var mm: MultiMesh = (child as MultiMeshInstance3D).multimesh
-		for i in mm.instance_count:
-			var o := mm.get_instance_transform(i).origin
-			var t: float = (o - from).dot(dir)
-			if t < 0.1:
-				continue
-			var perp := (from + dir * t).distance_to(o)
-			if perp < ROOM_PICK_R and t < best_t:
-				best_t = t
-				_room_grab_mmi = child
-				_room_grab_idx = i
-
-func _room_release() -> void:
-	_room_grab_mmi = null
-	_room_grab_idx = -1
-
-# 把拿起的水晶沿桌面(其所在高度水平面)移到手指处，限制在桌板内。
-func _room_move(pos: Vector2) -> void:
-	if _room_grab_idx < 0 or _room_grab_mmi == null or not is_instance_valid(_room_grab_mmi):
-		return
-	var mm: MultiMesh = _room_grab_mmi.multimesh
-	var xf := mm.get_instance_transform(_room_grab_idx)
 	var from := _camera.project_ray_origin(pos)
 	var dir := _camera.project_ray_normal(pos)
 	if absf(dir.y) < 0.0001:
 		return
-	var t := (xf.origin.y - from.y) / dir.y          # 与该高度水平面求交
+	var t := (_room_water_top - from.y) / dir.y
 	if t < 0.0:
 		return
 	var hit := from + dir * t
-	var lim := BOARD_LEN * 0.5 - 1.0
-	var np := Vector3(clampf(hit.x, -lim, lim), xf.origin.y, clampf(hit.z, -lim, lim))
-	mm.set_instance_transform(_room_grab_idx, Transform3D(xf.basis, np))
+	var p := Vector2(hit.x, hit.z)
+	if p.length() > _room_water_r:
+		p = p.normalized() * _room_water_r
+	_room_rips[_rip_idx] = Vector4(p.x, p.y, _room_time, 1.0)
+	_rip_idx = (_rip_idx + 1) % MAX_RIP
+	_room_water_mat.set_shader_parameter("rips", PackedVector4Array(_room_rips))
 
 func _room_two_dist() -> float:
 	var pts := _room_touches.values()
@@ -1059,7 +1048,15 @@ func _make_room_shader() -> Shader:
 shader_type spatial;
 render_mode cull_back, specular_schlick_ggx;
 uniform vec3 tint : source_color = vec3(0.16, 0.45, 0.95);
-// 静止陈列（不自动旋转）；朝向由实例 basis 决定。
+void vertex() {
+	// 每实例绕一个随机轴缓慢旋转（在水里各朝各方向漂转）。
+	float id = float(INSTANCE_ID);
+	vec3 axis = normalize(vec3(sin(id * 1.13 + 0.3), sin(id * 2.31 + 1.7), sin(id * 3.71 + 4.1)));
+	float ang = TIME * 0.14 + id * 1.7;
+	float s = sin(ang), c = cos(ang);
+	VERTEX = VERTEX * c + cross(axis, VERTEX) * s + axis * dot(axis, VERTEX) * (1.0 - c);
+	NORMAL = NORMAL * c + cross(axis, NORMAL) * s + axis * dot(axis, NORMAL) * (1.0 - c);
+}
 void fragment() {
 	vec3 N = normalize(NORMAL);
 	float fres = pow(1.0 - clamp(dot(N, normalize(VIEW)), 0.0, 1.0), 2.5);
@@ -1068,6 +1065,78 @@ void fragment() {
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.9;
 	EMISSION = tint * (0.35 + 1.5 * fres);        // 边缘辉光，像发光水晶
+}
+"""
+	return sh
+
+# 瓶子玻璃壳：透明、菲涅尔边缘更实、泛蓝、强反光。
+func _make_jar_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
+uniform vec3 tint : source_color = vec3(0.4, 0.6, 1.0);
+void fragment() {
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.2);
+	ALBEDO = tint;
+	METALLIC = 0.1;
+	ROUGHNESS = 0.03;
+	SPECULAR = 1.0;
+	EMISSION = tint * (0.05 + 0.5 * fres);
+	ALPHA = mix(0.05, 0.5, fres);                 // 中间清透、边缘更实
+}
+"""
+	return sh
+
+# 水体：瓶内半透明蓝，营造充满水。
+func _make_water_body_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_never;
+uniform vec3 wtint : source_color = vec3(0.2, 0.45, 0.9);
+void fragment() {
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
+	ALBEDO = wtint;
+	ROUGHNESS = 0.1;
+	EMISSION = wtint * 0.12;
+	ALPHA = mix(0.18, 0.36, fres);
+}
+"""
+	return sh
+
+# 水面：半透明圆盘，点击处扩散的同心涟漪。
+func _make_water_surface_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_never;
+uniform vec3 wtint : source_color = vec3(0.35, 0.6, 1.0);
+uniform float radius = 8.0;
+uniform vec4 rips[6];      // xy=中心 xz, z=起始时间, w=激活
+uniform float rtime = 0.0;
+varying vec3 wpos;
+void vertex() { wpos = VERTEX; }
+void fragment() {
+	float d = length(wpos.xz);
+	if (d > radius) discard;
+	float rip = 0.0;
+	for (int i = 0; i < 6; i++) {
+		if (rips[i].w < 0.5) continue;
+		float t = rtime - rips[i].z;
+		if (t < 0.0 || t > 3.0) continue;
+		float dist = distance(wpos.xz, rips[i].xy);
+		float front = t * 7.0;                        // 波前扩散速度
+		float ring = smoothstep(1.2, 0.0, abs(dist - front));
+		float wave = sin(dist * 3.5 - t * 11.0);
+		rip += wave * ring * exp(-t * 1.3);
+	}
+	float edge = smoothstep(radius, radius * 0.85, d);
+	ALBEDO = wtint;
+	ROUGHNESS = 0.05;
+	SPECULAR = 0.9;
+	EMISSION = wtint * (0.14 + 0.7 * abs(rip));
+	ALPHA = clamp(0.28 + 0.5 * abs(rip), 0.0, 0.9) * edge;
 }
 """
 	return sh
@@ -1196,10 +1265,13 @@ func _process(delta: float) -> void:
 			_room_yaw_vel *= damp
 			_room_pitch_vel *= damp
 			_update_room_cam()
-		if _godray_mat != null:                   # 神光光心 = 空间中心
+		_room_time += delta                       # 涟漪时钟
+		if _room_water_mat != null:
+			_room_water_mat.set_shader_parameter("rtime", _room_time)
+		if _godray_mat != null:                   # 神光光心 = 瓶内中心
 			var rvp := get_viewport().get_visible_rect().size
 			if rvp.x > 0.0 and rvp.y > 0.0:
-				_godray_mat.set_shader_parameter("light_uv", _camera.unproject_position(Vector3.ZERO) / rvp)
+				_godray_mat.set_shader_parameter("light_uv", _camera.unproject_position(Vector3(0.0, _room_cy, 0.0)) / rvp)
 		return
 	if _spinning:
 		return                                # 旋转 4 周动画期间由 tween 接管
