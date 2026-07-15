@@ -1302,7 +1302,7 @@ void fragment() {
 	METALLIC = 0.35;
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.9;
-	EMISSION = tint * (0.35 + 1.5 * fres);        // 边缘辉光，像发光水晶
+	// 自发光已关闭：水晶只靠空间光源照亮，不再自己发光。
 }
 """
 	return sh
