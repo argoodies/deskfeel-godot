@@ -929,9 +929,9 @@ func _open_room() -> void:
 	# 瓶身球半径固定，不随内部水晶数量变化（数量多则挤得更密）。
 	var disp := TARGET_W * TABLE_DISP
 	_room_R = disp * 3.5                                         # 瓶身球半径（固定）
-	# 尺寸对齐烧瓶模型（瓶身球心 y=-0.221、半径 0.288、颈 0.098、顶 0.49，模型单位）。
-	_room_neck_r = _room_R * (0.098 / 0.288)                     # 颈半径 ≈ 0.34R
-	_room_top = _room_R * ((0.49 + 0.221) / 0.288)              # 颈口 y（模型顶对齐）
+	# 尺寸对齐烧瓶模型（瓶身球心 y=-0.221、半径 0.31、颈 0.098、顶 0.49，模型单位）。
+	_room_neck_r = _room_R * (0.098 / 0.31)                      # 颈半径 ≈ 0.32R
+	_room_top = _room_R * ((0.49 + 0.221) / 0.31)              # 颈口 y（模型顶对齐）
 	_room_wall = 0.0                                            # 玻璃厚度由模型自身呈现
 	# 水晶容纳球：瓶身球(R) 再退一个水晶半径(≈0.6·disp)，网格不穿壁。
 	_room_body_r = minf(_room_R * 0.8, _room_R - disp * 0.6)
@@ -952,7 +952,7 @@ func _open_room() -> void:
 	var gmat := ShaderMaterial.new(); gmat.shader = _make_jar_shader()
 	if fmi != null:
 		fmi.material_override = gmat
-	var fs := _room_R / 0.288                                    # 缩放：模型瓶身半径 0.288 → R
+	var fs := _room_R / 0.31                                     # 缩放：模型瓶身半径 0.31 → R
 	flask.scale = Vector3(fs, fs, fs)
 	flask.position = Vector3(0.0, 0.221 * fs, 0.0)              # 抬升：瓶身球心 -0.221 → 原点
 	_room_root.add_child(flask)

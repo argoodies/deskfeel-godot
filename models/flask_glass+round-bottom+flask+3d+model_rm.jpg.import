@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7mknyisd3sw7"
-path="res://.godot/imported/flask_glass+chemistry+flask+3d+model_normal.jpg-51a36f5dc370118013a2acfd464d603f.ctex"
+uid="uid://c0m3n2h4bu55o"
+path="res://.godot/imported/flask_glass+round-bottom+flask+3d+model_rm.jpg-5e167473fbd287925555b95bfd6a78d6.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "e8be48a7524a16c59534b6d9db8a7647"
+"md5": "0a28d5b92facfc4ea13a073d0e19e537"
 }
 
 [deps]
 
-source_file="res://models/flask_glass+chemistry+flask+3d+model_normal.jpg"
-dest_files=["res://.godot/imported/flask_glass+chemistry+flask+3d+model_normal.jpg-51a36f5dc370118013a2acfd464d603f.ctex"]
+source_file="res://models/flask_glass+round-bottom+flask+3d+model_rm.jpg"
+dest_files=["res://.godot/imported/flask_glass+round-bottom+flask+3d+model_rm.jpg-5e167473fbd287925555b95bfd6a78d6.ctex"]
 
 [params]
 
@@ -39,5 +39,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=64
 detect_3d/compress_to=1
