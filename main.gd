@@ -855,7 +855,7 @@ func _open_room() -> void:
 	var disp := TARGET_W * TABLE_DISP
 	var pack_r := disp * 0.95 * pow(float(maxi(total, 1)), 1.0 / 3.0)
 	_room_R = pack_r + disp * 0.7                                # 瓶身球半径
-	_room_neck_r = _room_R * 0.3                                 # 细口
+	_room_neck_r = _model_room_radius("res://models/chariot.glb") * 1.1   # 细口=车柱体半径×1.1
 	_room_top = _room_R * 1.9                                    # 瓶口 y（瓶底 = -R）
 	_room_body_r = _room_R * 0.8                                 # 水晶容纳球
 	_room_cy = 0.0                                               # 瓶身球心=原点
@@ -949,6 +949,19 @@ func _close_room() -> void:
 	_camera.transform = _cam_saved
 	_touches.clear()
 	_room_touches.clear()
+
+# 模型在成就空间里的水平半径（柱体半径）：归一化到 TARGET_W 后再乘 TABLE_DISP。
+func _model_room_radius(path: String) -> float:
+	var scene := (load(path) as PackedScene).instantiate()
+	var m := _find_mesh(scene)
+	var r := TARGET_W * TABLE_DISP * 0.3
+	if m != null and m.mesh != null:
+		var ab := m.get_aabb()
+		var ext: float = maxf(ab.size.x, maxf(ab.size.y, ab.size.z))
+		var sc := TARGET_W / maxf(ext, 0.0001)
+		r = maxf(ab.size.x, ab.size.z) * 0.5 * sc * TABLE_DISP
+	scene.queue_free()
+	return r
 
 # 归一化+居中后的 ArrayMesh（顶点减去中心、乘缩放），供 MultiMesh 复用；同时缓存半高。
 func _centered_mesh(path: String) -> ArrayMesh:
