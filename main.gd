@@ -1302,7 +1302,7 @@ void fragment() {
 	METALLIC = 0.35;
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.9;
-	// 自发光已关闭：水晶只靠空间光源照亮，不再自己发光。
+	EMISSION = tint * (0.35 + 1.5 * fres);        // 边缘辉光，像发光水晶
 }
 """
 	return sh
@@ -1425,8 +1425,8 @@ void fragment() {
 	ALBEDO = wtint;
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.8;
-	EMISSION = wtint * 0.1;
-	ALPHA = mix(0.14, 0.34, fres);
+	EMISSION = wtint * 0.08;
+	ALPHA = mix(0.06, 0.2, fres);                 // 更透（中心近乎清澈，边缘略实）
 }
 """
 	return sh
