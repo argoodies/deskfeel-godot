@@ -957,6 +957,7 @@ func _build_room_multimesh(path: String, count: int, start_g: int, inner_r: floa
 	var GA := 2.3999632
 	var positions := PackedVector3Array()
 	var vels := PackedVector3Array()
+	var avels := PackedVector3Array()
 	for i in count:
 		# 圆柱体内低差异分布：随机方向/高度，限制在瓶内（不出瓶）。
 		var g := float(start_g + i) + 0.5
@@ -972,12 +973,13 @@ func _build_room_multimesh(path: String, count: int, start_g: int, inner_r: floa
 		mm.set_instance_transform(i, Transform3D(basis, pos))
 		positions.append(pos)
 		vels.append(Vector3.ZERO)
+		avels.append(Vector3.ZERO)
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	var mat := ShaderMaterial.new()
 	mat.shader = _make_room_shader()
 	mmi.material_override = mat
-	_room_mmis.append({"node": mmi, "pos": positions, "vel": vels})   # 实时位置/速度
+	_room_mmis.append({"node": mmi, "pos": positions, "vel": vels, "avel": avels})   # 位置/速度/角速度
 	return mmi
 
 func _update_room_cam() -> void:
@@ -1052,6 +1054,8 @@ func _room_sim(delta: float) -> void:
 		var mm: MultiMesh = node.multimesh
 		var pos: PackedVector3Array = entry.get("pos")
 		var vel: PackedVector3Array = entry.get("vel")
+		var avel: PackedVector3Array = entry.get("avel")
+		var ADRAG := exp(-1.2 * delta)                # 角速度水阻力
 		for i in pos.size():
 			var p := pos[i]
 			var v := vel[i]
@@ -1078,11 +1082,20 @@ func _room_sim(delta: float) -> void:
 					v.y = -v.y * REST                 # 撞顶反弹
 			pos[i] = p
 			vel[i] = v
-			mm.set_instance_transform(i, Transform3D(mm.get_instance_transform(i).basis, p))
-			if v.length() > 0.03:
+			# 冲击自旋：绕角速度轴转动 basis，之后衰减（shader 的慢自转仍叠加其上）。
+			var a := avel[i]
+			var b := mm.get_instance_transform(i).basis
+			var asp := a.length()
+			if asp > 0.01:
+				b = Basis(a / asp, asp * delta) * b
+				a *= ADRAG
+				avel[i] = a
+			mm.set_instance_transform(i, Transform3D(b, p))
+			if v.length() > 0.03 or asp > 0.05:
 				moving = true
 		entry["pos"] = pos
 		entry["vel"] = vel
+		entry["avel"] = avel
 	_room_moving = moving
 
 # 相机射线在 XZ 上是否穿过瓶柱（半径 _room_jar_r）→ 判断触点是否落在瓶上。
@@ -1131,6 +1144,7 @@ func _room_impact(pos: Vector2) -> void:
 			continue
 		var poss: PackedVector3Array = entry.get("pos")
 		var vels: PackedVector3Array = entry.get("vel")
+		var avels: PackedVector3Array = entry.get("avel")
 		for i in poss.size():
 			var pxz := Vector2(poss[i].x, poss[i].z)
 			var d := pxz.distance_to(c2)
@@ -1141,7 +1155,13 @@ func _room_impact(pos: Vector2) -> void:
 				if dirh.length() < 0.001:
 					dirh = Vector3(randf_range(-1, 1), 0.0, randf_range(-1, 1))
 				vels[i] += (dirh.normalized() * 0.7 + Vector3.UP * 0.9) * (STR * fall)
+				# 冲击也随机造成自旋。
+				var rax := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
+				if rax.length() < 0.01:
+					rax = Vector3.UP
+				avels[i] += rax.normalized() * (randf_range(4.0, 9.0) * fall)
 		entry["vel"] = vels
+		entry["avel"] = avels
 	_room_moving = true
 
 func _room_two_dist() -> float:
