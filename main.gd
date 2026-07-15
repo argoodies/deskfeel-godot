@@ -1478,26 +1478,19 @@ void fragment() {
 """
 	return sh
 
-# round-bottom 烧瓶母线：圆肚球身 → 较低处收肩 → 长直颈 → 顶端卷边瓶口(rolled lip)。
+# 烧瓶母线：接近纯球的圆肚 → 顶部收肩 → 直颈（无卷唇）。
 func _bottle_radius(y: float) -> float:
 	var R := _room_R
 	var nr := _room_neck_r
-	var body_top := R * 0.70                       # 收肩起点（烧瓶肩在偏下处）
-	var neck_start := R * 1.03                      # 进入直颈
+	var body_top := R * 0.94                       # 球身收口高度（接近纯球顶）
+	var neck_start := R * 1.0                        # 进入直颈
 	if y <= body_top:
-		return sqrt(maxf(0.0, R * R - y * y))       # 圆肚（球身）
+		return sqrt(maxf(0.0, R * R - y * y))       # 圆肚（纯球身）
 	elif y <= neck_start:
 		var r0 := sqrt(maxf(0.0, R * R - body_top * body_top))
-		# 平滑 S 形收肩（smoothstep），像烧瓶自然的肩线。
 		var t := (y - body_top) / (neck_start - body_top)
 		return lerpf(r0, nr, smoothstep(0.0, 1.0, t))   # 肩部
-	# 直颈；颈口一小段向外张开成圆唇（rolled lip）。
-	var lip_h := R * 0.12                            # 卷唇高度（短）
-	var lip_lo := _room_top - lip_h
-	if y > lip_lo:
-		var t := (y - lip_lo) / lip_h               # 0→1
-		return nr * (1.0 + 0.35 * smoothstep(0.0, 1.0, t))   # 平滑向外张的圆唇
-	return nr                                        # 细口
+	return nr                                        # 直颈
 
 # 旋转母线生成瓶面 ArrayMesh（rscale 缩放半径；y 从 -R 到 y_top；cap_top 加水面盖）。
 # wall>0：双层壁（外壁 + 内壁向内缩 wall + 口沿圈），瓶壁有厚度。
