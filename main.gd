@@ -303,7 +303,7 @@ func _build_toggle() -> void:
 	layer.add_child(_play_btn)
 
 	# 成就空间右上角：关闭按钮（进空间才显示，常驻不淡出）。
-	_room_next_btn = _make_flat_btn("res://textures/icon_refresh.png")
+	_room_next_btn = _make_flat_btn("res://textures/icon_play.png")
 	_room_next_btn.pressed.connect(_room_next_level)
 	_room_next_btn.visible = false
 	_apply_glass(_room_next_btn)
