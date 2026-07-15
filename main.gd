@@ -106,6 +106,13 @@ var _room_inner_r := 8.0                           # 水晶可达最大半径（
 var _room_y_lo := -4.0
 var _room_y_hi := 4.0
 var _room_burst_r := 5.0                           # 一片冲击的作用半径
+const BUBBLE_MAX := 180                             # 气泡池容量
+var _bubble_mm: MultiMesh                           # 气泡 MultiMesh
+var _bub_pos: PackedVector3Array
+var _bub_vel: PackedVector3Array
+var _bub_life: PackedFloat32Array
+var _bub_r: PackedFloat32Array
+var _bub_idx := 0
 var _cam_saved := Transform3D.IDENTITY
 var _counts: Dictionary = {}                  # 模型 path -> 完成(交付)次数
 var _centered_cache: Dictionary = {}          # path -> 居中归一化后的 ArrayMesh 缓存
@@ -903,10 +910,39 @@ func _open_room() -> void:
 			continue
 		_room_root.add_child(_build_room_multimesh(path, cnt, g, inner_r, y_lo, y_hi))
 		g += cnt
+	# 气泡池（自旋水晶周围冒泡上浮）。
+	_bubble_mm = MultiMesh.new()
+	_bubble_mm.transform_format = MultiMesh.TRANSFORM_3D
+	var bsph := SphereMesh.new()
+	bsph.radius = 1.0; bsph.height = 2.0; bsph.radial_segments = 8; bsph.rings = 4
+	_bubble_mm.mesh = bsph
+	_bubble_mm.instance_count = BUBBLE_MAX
+	var bmmi := MultiMeshInstance3D.new()
+	bmmi.multimesh = _bubble_mm
+	var bmat := ShaderMaterial.new(); bmat.shader = _make_bubble_shader()
+	bmmi.material_override = bmat
+	_room_root.add_child(bmmi)
+	_bub_pos = PackedVector3Array(); _bub_pos.resize(BUBBLE_MAX)
+	_bub_vel = PackedVector3Array(); _bub_vel.resize(BUBBLE_MAX)
+	_bub_life = PackedFloat32Array(); _bub_life.resize(BUBBLE_MAX)
+	_bub_r = PackedFloat32Array(); _bub_r.resize(BUBBLE_MAX)
+	_bub_idx = 0
+	var hidden := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+	for i in BUBBLE_MAX:
+		_bub_life[i] = 0.0
+		_bubble_mm.set_instance_transform(i, hidden)
 	_room_moving = true                             # 开场即开始下沉/沉底
 	# 相机距离随瓶大小自适应。
 	_room_dist = clampf(jar_r * 2.6 + jar_h * 0.6, 16.0, 150.0)
 	_update_room_cam()
+
+func _spawn_bubble(at: Vector3, radius: float) -> void:
+	var i := _bub_idx
+	_bub_idx = (_bub_idx + 1) % BUBBLE_MAX
+	_bub_pos[i] = at
+	_bub_vel[i] = Vector3(randf_range(-0.3, 0.3), randf_range(2.2, 3.4), randf_range(-0.3, 0.3))
+	_bub_life[i] = randf_range(1.5, 2.8)
+	_bub_r[i] = radius
 
 func _close_room() -> void:
 	_in_room = false
@@ -1047,6 +1083,7 @@ func _room_sim(delta: float) -> void:
 	var DRAG := exp(-0.4 * delta)                     # 水阻力更小 → 漂得更久
 	var GRAV := 2.2                                   # 重力：最终沉底
 	var moving := false
+	var bub_budget := 6                               # 每帧最多新气泡
 	for entry in _room_mmis:
 		var node: MultiMeshInstance3D = entry.get("node")
 		if not is_instance_valid(node):
@@ -1091,11 +1128,37 @@ func _room_sim(delta: float) -> void:
 				a *= ADRAG
 				avel[i] = a
 			mm.set_instance_transform(i, Transform3D(b, p))
+			# 自旋足够快 → 周围随机冒气泡。
+			if asp > 5.0 and bub_budget > 0 and randf() < asp * 0.012:
+				var off := Vector3(randf_range(-1, 1), randf_range(-0.4, 0.6), randf_range(-1, 1)).normalized() * (TARGET_W * TABLE_DISP * 0.5)
+				_spawn_bubble(p + off, randf_range(0.12, 0.28))
+				bub_budget -= 1
 			if v.length() > 0.03 or asp > 0.05:
 				moving = true
 		entry["pos"] = pos
 		entry["vel"] = vel
 		entry["avel"] = avel
+	# 更新气泡：上浮 + 轻微晃动 + 到水面/寿命尽消失。
+	if _bubble_mm != null:
+		var hidden := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+		for i in BUBBLE_MAX:
+			if _bub_life[i] <= 0.0:
+				continue
+			_bub_life[i] -= delta
+			var bv := _bub_vel[i]
+			bv.x += randf_range(-0.7, 0.7) * delta
+			bv.z += randf_range(-0.7, 0.7) * delta
+			var bp := _bub_pos[i] + bv * delta
+			if _bub_life[i] <= 0.0 or bp.y >= _room_water_top:
+				_bub_life[i] = 0.0
+				_bubble_mm.set_instance_transform(i, hidden)
+				continue
+			_bub_vel[i] = bv
+			_bub_pos[i] = bp
+			var fade := clampf(_bub_life[i], 0.0, 1.0)
+			var sc := _bub_r[i] * (0.5 + 0.5 * fade)
+			_bubble_mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * sc), bp))
+			moving = true                              # 有气泡仍在动 → 继续模拟
 	_room_moving = moving
 
 # 相机射线在 XZ 上是否穿过瓶柱（半径 _room_jar_r）→ 判断触点是否落在瓶上。
@@ -1209,6 +1272,24 @@ void fragment() {
 	ROUGHNESS = 0.12;
 	SPECULAR = 0.9;
 	EMISSION = tint * (0.35 + 1.5 * fres);        // 边缘辉光，像发光水晶
+}
+"""
+	return sh
+
+# 气泡：透明小球，中心清透、边缘亮（菲涅尔），像水里的气泡。
+func _make_bubble_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
+void fragment() {
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
+	ALBEDO = vec3(0.75, 0.88, 1.0);
+	ROUGHNESS = 0.0;
+	METALLIC = 0.0;
+	SPECULAR = 1.0;
+	EMISSION = vec3(0.35, 0.55, 0.95) * fres * 0.6;
+	ALPHA = clamp(0.06 + 0.8 * fres, 0.0, 0.9);   // 中心透、边缘亮
 }
 """
 	return sh
