@@ -809,40 +809,61 @@ func _open_room() -> void:
 		_room_root.queue_free()
 	_room_root = Node3D.new()
 	add_child(_room_root)
-	# 发光平面（代替桌板）：一块朝上的发光圆盘，边缘淡出，像一层光的地面。
+	# 格子边长 = 车的桌面占地（≈ TARGET_W * 显示缩放），让车刚好占一格。
+	var cell := TARGET_W * TABLE_DISP * 1.12
+	# 中心向外的格子中心列表（一物一格），全局按类型顺序分配。
+	var total := 0
+	for path in MODELS:
+		total += mini(int(_counts.get(path, 0)), ROOM_CAP)
+	var cells := _gen_cells(maxi(total, 1), cell)
+	# 透明水晶棋盘格：格子随视野铺满，中心向外自适应大小。
+	var grid_half: float = sqrt(float(maxi(total, 1))) * cell * 0.9 + cell * 3.0
+	var board: float = maxf(24.0, grid_half * 2.0)
 	var plane := MeshInstance3D.new()
 	var pmesh := PlaneMesh.new()
-	pmesh.size = Vector2(BOARD_LEN, BOARD_LEN)
+	pmesh.size = Vector2(board, board)
 	plane.mesh = pmesh
 	var pmat := ShaderMaterial.new()
 	pmat.shader = _make_light_plane_shader()
+	pmat.set_shader_parameter("cell", cell)
+	pmat.set_shader_parameter("board", board)
 	plane.material_override = pmat
 	_room_root.add_child(plane)
-	# 真实灯光照亮水晶：高处俯照 + 冷色补光。
+	# 真实灯光照亮水晶：高处俯照 + 中心补光。
 	var top := SpotLight3D.new()
 	top.position = Vector3(0, 36, 0)
 	top.rotation = Vector3(-PI * 0.5, 0, 0)                     # 朝下
-	top.light_energy = 14.0; top.spot_range = 90.0; top.spot_angle = 42.0
+	top.light_energy = 14.0; top.spot_range = 120.0; top.spot_angle = 46.0
 	top.light_color = Color(0.85, 0.92, 1.0); top.shadow_enabled = false
 	_room_root.add_child(top)
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, 3, 0); fill.light_energy = 3.0; fill.omni_range = BOARD_LEN
+	fill.position = Vector3(0, 4, 0); fill.light_energy = 3.0; fill.omni_range = board
 	fill.light_color = Color(0.5, 0.65, 1.0); fill.shadow_enabled = false
 	_room_root.add_child(fill)
-	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，平铺在桌面上。
-	var seed_i := 0
-	var max_n := 1
+	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，一物一格摆在棋盘上。
+	var g := 0
 	for path in MODELS:
 		var cnt := mini(int(_counts.get(path, 0)), ROOM_CAP)
 		if cnt <= 0:
 			continue
-		_room_root.add_child(_build_room_multimesh(path, cnt, seed_i))
-		max_n = maxi(max_n, cnt)
-		seed_i += 1
-	# 相机距离随桌面上堆的半径自适应。
-	var cluster_r := TABLE_SPACING * sqrt(float(max_n))
-	_room_dist = clampf(cluster_r * 2.0 + 12.0, 16.0, 110.0)
+		_room_root.add_child(_build_room_multimesh(path, cnt, g, cells))
+		g += cnt
+	# 相机距离随棋盘范围自适应。
+	_room_dist = clampf(grid_half * 2.0 + 10.0, 16.0, 120.0)
 	_update_room_cam()
+
+# 生成 n 个"中心向外"排序的格子中心（世界 XZ），每格间隔 cell。
+func _gen_cells(n: int, cell: float) -> PackedVector2Array:
+	var k := int(ceil(sqrt(float(n)))) + 2
+	var all: Array = []
+	for c in range(-k, k + 1):
+		for r in range(-k, k + 1):
+			all.append(Vector2(float(c), float(r)))
+	all.sort_custom(func(a, b): return a.length_squared() < b.length_squared())
+	var out := PackedVector2Array()
+	for i in mini(n, all.size()):
+		out.append((all[i] as Vector2) * cell)
+	return out
 
 func _close_room() -> void:
 	_in_room = false
@@ -884,22 +905,19 @@ func _centered_mesh(path: String) -> ArrayMesh:
 	_centered_h[path] = halfy
 	return out
 
-func _build_room_multimesh(path: String, count: int, seed_i: int) -> MultiMeshInstance3D:
+func _build_room_multimesh(path: String, count: int, start_g: int, cells: PackedVector2Array) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = _centered_mesh(path)
 	mm.instance_count = count
-	var lift: float = float(_centered_h.get(path, TARGET_W * 0.5)) * TABLE_DISP   # 底面贴桌面
+	var lift: float = float(_centered_h.get(path, TARGET_W * 0.5)) * TABLE_DISP   # 底面贴平面
 	var rng := RandomNumberGenerator.new()
-	rng.seed = int(hash(path)) + seed_i * 7919
-	var GA := 2.3999632                          # 黄金角
+	rng.seed = int(hash(path)) + start_g * 7919
 	for i in count:
-		# 桌面上的中心向外密堆积（2D 向日葵螺旋：中心先满、数量增才向外扩）。
-		var idx := float(i) + 0.5
-		var r := TABLE_SPACING * sqrt(idx)
-		var theta := idx * GA + float(seed_i) * 1.7
-		var pos := Vector3(r * cos(theta), lift, r * sin(theta))   # 立在桌面 y=0 上
-		# 直立（仅绕竖直轴随机转个朝向）+ 统一显示缩放。
+		# 一物一格：按全局中心向外顺序落在棋盘格中心。
+		var g := start_g + i
+		var c2: Vector2 = cells[g] if g < cells.size() else Vector2.ZERO
+		var pos := Vector3(c2.x, lift, c2.y)
 		var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * TABLE_DISP)
 		mm.set_instance_transform(i, Transform3D(basis, pos))
 	var mmi := MultiMeshInstance3D.new()
@@ -1062,19 +1080,31 @@ void fragment() {
 """
 	return sh
 
-# 发光平面（代替桌板）：不受光的加色发光圆盘，中心亮、边缘淡出。
+# 透明水晶棋盘格（代替桌板）：黑白格 + 发光格线，半透明泛蓝，边缘淡出。
 func _make_light_plane_shader() -> Shader:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
-uniform vec3 glow : source_color = vec3(0.32, 0.55, 1.0);
+render_mode cull_disabled, blend_mix, depth_draw_never, specular_schlick_ggx;
+uniform vec3 tint : source_color = vec3(0.35, 0.6, 1.0);
+uniform float cell = 2.2;
+uniform float board = 40.0;
+varying vec3 wpos;
+void vertex() { wpos = VERTEX; }        // PlaneMesh 在原点无缩放 → 局部即世界 XZ
 void fragment() {
-	float d = length(UV - vec2(0.5)) * 2.0;       // 0 中心 → 1 边缘
-	float a = smoothstep(1.0, 0.15, d);
-	EMISSION = glow * a * 1.6;
-	ALBEDO = vec3(0.0);
-	ALPHA = a;
+	vec2 uv = wpos.xz / cell;
+	vec2 gi = floor(uv);
+	float chk = mod(gi.x + gi.y, 2.0);            // 0/1 交替格
+	vec2 f = abs(fract(uv) - 0.5);
+	float edge = max(f.x, f.y);
+	float line = smoothstep(0.44, 0.5, edge);     // 格线
+	float d = length(wpos.xz);
+	float fade = smoothstep(board * 0.5, board * 0.32, d);  // 边缘淡出
+	ALBEDO = tint;
+	METALLIC = 0.0;
+	ROUGHNESS = 0.08;
+	EMISSION = tint * (0.12 + 0.35 * chk + line * 0.9);
+	ALPHA = clamp((mix(0.10, 0.30, chk) + line * 0.5) * fade, 0.0, 1.0);
 }
 """
 	return sh
