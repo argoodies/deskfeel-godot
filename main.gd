@@ -70,13 +70,13 @@ var _toggle_btn: Button
 
 # ---------- 成就空间（完成过的模型按次数漂浮展示）----------
 const ROOM_CAP := 120                         # 每种模型最多实例数（性能上限）
-const ROOM_R := 9.0                           # 漂浮空间半径
-const ROOM_DIST := 17.0                        # 相机到空间中心的距离
+const ROOM_SPACING := 1.5                      # 实例密堆积间距（越大越松）
 var _map_btn: Button
 var _in_room := false
 var _room_root: Node3D                        # 成就空间根（每种模型一个 MultiMeshInstance3D）
 var _room_yaw := 0.0
 var _room_pitch := 0.15
+var _room_dist := 14.0                          # 相机到空间中心的距离（随规模自适应）
 var _room_dragging := false
 var _cam_saved := Transform3D.IDENTITY
 var _counts: Dictionary = {}                  # 模型 path -> 完成(交付)次数
@@ -808,12 +808,17 @@ func _open_room() -> void:
 	_room_root.add_child(fill)
 	# 每种"完成过"的模型 → 一个 MultiMeshInstance3D，实例数=完成次数。
 	var seed_i := 0
+	var max_n := 1
 	for path in MODELS:
-		var cnt := int(_counts.get(path, 0))
+		var cnt := mini(int(_counts.get(path, 0)), ROOM_CAP)
 		if cnt <= 0:
 			continue
-		_room_root.add_child(_build_room_multimesh(path, mini(cnt, ROOM_CAP), seed_i))
+		_room_root.add_child(_build_room_multimesh(path, cnt, seed_i))
+		max_n = maxi(max_n, cnt)
 		seed_i += 1
+	# 相机距离随最大堆半径自适应（小规模也不至于太远）。
+	var cluster_r := ROOM_SPACING * pow(float(max_n), 1.0 / 3.0)
+	_room_dist = clampf(cluster_r * 2.6 + 3.0, 9.0, 44.0)
 	_update_room_cam()
 
 func _close_room() -> void:
@@ -860,14 +865,19 @@ func _build_room_multimesh(path: String, count: int, seed_i: int) -> MultiMeshIn
 	mm.instance_count = count
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(hash(path)) + seed_i * 7919
+	var GA := 2.3999632                          # 黄金角
 	for i in count:
-		# 空间内随机漂浮位置（球体分布）+ 随机基础朝向 + 轻微大小抖动。
-		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
-		if dir.length() < 0.01:
-			dir = Vector3.UP
-		var pos := dir.normalized() * (ROOM_R * pow(rng.randf(), 0.5))
+		# 中心向外的确定性密堆积：半径按索引立方根增长（体积密度恒定，中心先满、数量增才外扩），
+		# 方向用黄金角螺旋铺满球面；每种模型加相位偏移以交错不重叠。
+		var idx := float(i) + 0.5
+		var r := ROOM_SPACING * pow(idx, 1.0 / 3.0)
+		var y := 1.0 - 2.0 * fposmod(idx * 0.618034 + float(seed_i) * 0.5, 1.0)
+		var rxy := sqrt(maxf(0.0, 1.0 - y * y))
+		var theta := idx * GA + float(seed_i) * 1.7
+		var pos := Vector3(rxy * cos(theta), y, rxy * sin(theta)) * r
+		# 随机基础朝向 + 大小抖动（仅影响姿态/尺寸，位置是确定的）。
 		var basis := Basis(Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.0, TAU))
-		basis = basis.scaled(Vector3.ONE * rng.randf_range(0.34, 0.5))   # 缩小以便挤下更多
+		basis = basis.scaled(Vector3.ONE * rng.randf_range(0.34, 0.5))
 		mm.set_instance_transform(i, Transform3D(basis, pos))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
@@ -878,7 +888,7 @@ func _build_room_multimesh(path: String, count: int, seed_i: int) -> MultiMeshIn
 
 func _update_room_cam() -> void:
 	var b := Basis.from_euler(Vector3(_room_pitch, _room_yaw, 0.0))
-	var pos: Vector3 = b * Vector3(0, 0, ROOM_DIST)
+	var pos: Vector3 = b * Vector3(0, 0, _room_dist)
 	_camera.transform = Transform3D(Basis.IDENTITY, pos)
 	_camera.look_at(Vector3.ZERO, Vector3.UP)
 
