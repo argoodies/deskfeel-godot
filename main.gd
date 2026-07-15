@@ -937,7 +937,8 @@ func _open_room() -> void:
 	_room_body_r = minf(_room_R * 0.8, _room_R - disp * 0.6)
 	_room_cr = disp * 0.45                                       # 水晶碰撞半径
 	_room_cy = 0.0                                               # 瓶身球心=原点
-	_room_water_top = _room_R * 0.6                              # 水面在瓶身内（圆肚里）
+	var neck_base := _room_R * 1.05                              # 肩颈交界高度
+	_room_water_top = neck_base + 0.5 * (_room_top - neck_base)  # 水到瓶颈 50% 高度
 	_room_water_r = _room_R
 	_room_burst_r = _room_R * 1.15
 	_room_water_mat = null                          # 下面建水体时赋值（水面涟漪材质）
