@@ -717,12 +717,17 @@ func _finish_challenge() -> void:
 	if _room_circle_btn != null:
 		_room_circle_btn.visible = false
 	_save_state()
-	if _in_room:                               # 重建瓶子（保住游戏相机），并刷新进度
+	if _in_room:                               # 重建瓶子；保住游戏相机 + 当前视角(旋转/缩放)
 		var saved := _cam_saved
+		var keep_yaw := _room_yaw
+		var keep_dist := _room_dist
 		_open_room(false)
 		_cam_saved = saved
+		_room_yaw = keep_yaw                   # 不重置旋转
+		_room_dist = keep_dist                 # 不重置缩放
+		_update_room_cam()
 		_room_flash_light()                    # 巨大光芒 5s 后消失
-		_show_done_label()                     # 圆圈位置 → app 名+版本号闪光文字（常驻）
+		_show_done_label()                     # 圆圈位置 → 中日英名+版本号（常驻）
 	else:
 		_update_room_progress()
 
