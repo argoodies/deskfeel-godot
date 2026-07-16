@@ -564,6 +564,7 @@ func _build_video_player() -> void:
 	_video_player = VideoStreamPlayer.new()
 	_video_player.expand = true
 	_video_player.loop = false
+	_video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE   # 触摸穿透到黑底 → 任意点击可跳过
 	_video_player.finished.connect(_on_video_finished)
 	_video_layer.add_child(_video_player)
 
@@ -654,6 +655,10 @@ func _play_challenge_video() -> void:
 	_video_player.offset_top = -h * 0.5; _video_player.offset_bottom = h * 0.5
 	_video_layer.visible = true
 	_video_player.play()
+	# 兜底：若 finished 未触发（Web 上偶发），按时长自动结束。
+	get_tree().create_timer(16.0).timeout.connect(func():
+		if _video_layer.visible:
+			_on_video_finished())
 
 func _on_video_input(event: InputEvent) -> void:
 	# 视频播放中点一下 → 跳过。
@@ -671,8 +676,12 @@ func _on_video_finished() -> void:
 
 func _finish_challenge() -> void:
 	if _challenge < CHALLENGE_TARGETS.size():
-		_challenge += 1                        # 进入下一挑战（如 x/30）
-	# 不再清空水晶：保持数量。挑战2起限 30 个（新增时剔除最早的）。
+		_challenge += 1
+	# 随机移除 15 个成就水晶（不足则移除全部）。
+	for i in 15:
+		if _crystal_queue.is_empty():
+			break
+		_crystal_queue.remove_at(randi() % _crystal_queue.size())
 	_enforce_bottle_cap()
 	_recount()
 	_room_circle_lock = false
@@ -680,12 +689,62 @@ func _finish_challenge() -> void:
 	if _room_circle_btn != null:
 		_room_circle_btn.visible = false
 	_save_state()
-	if _in_room:                               # 重建空瓶（保住游戏相机），并刷新进度
+	if _in_room:                               # 重建瓶子（保住游戏相机），并刷新进度
 		var saved := _cam_saved
 		_open_room()
 		_cam_saved = saved
+		_room_flash_light()                    # 巨大光芒 5s 后消失
 	else:
 		_update_room_progress()
+
+# 完成时瓶中爆发巨大光芒：亮起 → 保持 → 5s 内渐隐消失。
+func _room_flash_light() -> void:
+	if _room_root == null or not is_instance_valid(_room_root):
+		return
+	var flash := OmniLight3D.new()
+	flash.position = Vector3(0.0, _room_cy, 0.0)
+	flash.light_color = Color(0.85, 0.92, 1.0)
+	flash.omni_range = _room_R * 16.0
+	flash.light_energy = 0.0
+	flash.shadow_enabled = false
+	_room_root.add_child(flash)
+	var glow := MeshInstance3D.new()           # 发光球体（配合泛光 → 巨大光芒）
+	var sph := SphereMesh.new()
+	sph.radius = _room_R * 0.5; sph.height = _room_R
+	sph.radial_segments = 24; sph.rings = 12
+	glow.mesh = sph
+	glow.position = Vector3(0.0, _room_cy, 0.0)
+	var gm := ShaderMaterial.new(); gm.shader = _make_flash_shader()
+	gm.set_shader_parameter("intensity", 0.0)
+	glow.material_override = gm
+	_room_root.add_child(glow)
+	var setg := func(v: float): gm.set_shader_parameter("intensity", v)
+	var tw := flash.create_tween()             # 绑在 flash 上，退关自动失效
+	tw.set_parallel(true).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(flash, "light_energy", 32.0, 0.5)     # 亮起
+	tw.tween_method(setg, 0.0, 1.0, 0.5)
+	tw.chain().tween_interval(3.9)                          # 保持
+	tw.chain().set_parallel(true)
+	tw.tween_property(flash, "light_energy", 0.0, 0.6)      # 渐隐
+	tw.tween_method(setg, 1.0, 0.0, 0.6)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(flash): flash.queue_free()
+		if is_instance_valid(glow): glow.queue_free())
+
+func _make_flash_shader() -> Shader:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode blend_add, unshaded, cull_disabled, depth_draw_never;
+uniform float intensity = 0.0;
+void fragment() {
+	float f = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 1.4);
+	EMISSION = vec3(0.85, 0.92, 1.0) * intensity * 2.4;
+	ALBEDO = vec3(0.0);
+	ALPHA = clamp(intensity * (0.35 + 0.65 * f), 0.0, 1.0);
+}
+"""
+	return sh
 
 func _apply_lighting(animate: bool) -> void:
 	var dir_c := Color(0.62, 0.74, 1.0) if _night else Color(1.0, 0.94, 0.85)
