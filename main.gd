@@ -92,9 +92,8 @@ var _room_prog: ProgressBar
 var _room_prog_label: Label
 var _room_circle_btn: Button                        # 成就空间底部完成圆圈
 var _room_done_box: VBoxContainer                   # 完成后闪光文字容器（两行）
-var _room_done_label: Label                         # 第一行：app 名+版本号
-var _room_sub_label: Label                          # 第二行：副标题
-var _room_done_tw: Tween                            # 闪光 tween
+var _room_done_label: Label                         # app 名+版本号（纯白）
+var _room_done_tw: Tween
 var _room_circle_shown := false                     # 圆圈已出现（"叮"只响一次）
 var _room_circle_lock := false                      # 完成动画期间锁定
 var _video_layer: CanvasLayer
@@ -576,18 +575,8 @@ func _build_room_progress_ui() -> void:
 	_room_done_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_room_done_label.add_theme_font_override("font", cjk)
 	_room_done_label.add_theme_font_size_override("font_size", 44)
-	_room_done_label.add_theme_color_override("font_color", Color(0.85, 0.92, 1.0))
-	_room_done_label.add_theme_color_override("font_outline_color", Color(0.4, 0.6, 1.0, 0.9))
-	_room_done_label.add_theme_constant_override("outline_size", 10)
+	_room_done_label.add_theme_color_override("font_color", Color(1, 1, 1))   # 纯白
 	_room_done_box.add_child(_room_done_label)
-	_room_sub_label = Label.new()
-	_room_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_room_sub_label.add_theme_font_override("font", cjk)
-	_room_sub_label.add_theme_font_size_override("font_size", 26)
-	_room_sub_label.add_theme_color_override("font_color", Color(0.8, 0.88, 1.0))
-	_room_sub_label.add_theme_color_override("font_outline_color", Color(0.4, 0.6, 1.0, 0.8))
-	_room_sub_label.add_theme_constant_override("outline_size", 6)
-	_room_done_box.add_child(_room_sub_label)
 
 func _build_video_player() -> void:
 	_video_layer = CanvasLayer.new()
@@ -1029,29 +1018,14 @@ func _app_name_localized() -> String:
 		return "擦水晶"
 	return "Crystal Polish"
 
-# 本地化副标题。
-func _app_subtitle_localized() -> String:
-	var loc := TranslationServer.get_locale().to_lower()
-	if loc.begins_with("ja"):
-		return "ほこりを拭いてクリスタルを磨く"
-	if loc.begins_with("zh"):
-		return "擦去灰塵，打磨透亮水晶"
-	return "Wipe & polish the crystal"
-
 # 完成后：圆圈位置显示「app 名 + 版本号」闪光文字，常驻直到离开成就页面。
 func _show_done_label() -> void:
 	if _room_done_box == null:
 		return
 	var ver := str(ProjectSettings.get_setting("application/config/version", "0.0.1"))
 	_room_done_label.text = "%s  v%s" % [_app_name_localized(), ver]
-	_room_sub_label.text = _app_subtitle_localized()
 	_room_done_box.visible = true
-	_room_done_box.modulate = Color(1, 1, 1, 1)
-	if _room_done_tw != null and _room_done_tw.is_valid():
-		_room_done_tw.kill()
-	_room_done_tw = _room_done_box.create_tween().set_loops().set_trans(Tween.TRANS_SINE)
-	_room_done_tw.tween_property(_room_done_box, "modulate", Color(0.55, 0.75, 1.0, 0.8), 1.8)
-	_room_done_tw.tween_property(_room_done_box, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.8)
+	_room_done_box.modulate = Color(1, 1, 1, 1)   # 纯白，不闪烁
 
 func _hide_done_label() -> void:
 	if _room_done_tw != null and _room_done_tw.is_valid():
